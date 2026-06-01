@@ -1052,7 +1052,9 @@ u_{N-1}(z_{N-1})
 \right\}.
 ``` 
 
---## Structured Linear Solve
+---
+
+## Structured Linear Solve
 
 The full multiple-shooting RTI derivation is still central even though the notebook implementation condenses the optimization problem to controls.
 
@@ -1153,7 +1155,7 @@ c_1 \\
 \end{bmatrix}.
 ```
 
-This KKT system represents the first-order optimality conditions of the Gauss--Newton quadratic approximation. The matrices $H_k$ come from the local least-squares curvature, the vectors $g_k$ are local gradient terms, and the vectors $c_k$ represent linearized shooting-defect residuals.
+This KKT system represents the first-order optimality conditions of the Gauss Newton quadratic approximation. The matrices $H_k$ come from the local least-squares curvature, the vectors $g_k$ are local gradient terms, and the vectors $c_k$ represent linearized shooting-defect residuals.
 
 The block coupling matrix at each shooting interval is determined by the linearized dynamics:
 
@@ -1169,7 +1171,7 @@ This block maps the state and control correction at stage $k$ to the predicted c
 
 Because only nearest-neighbor shooting defects couple consecutive stages, the KKT matrix is block banded. This structure can be exploited by Riccati recursion or sparse symmetric factorization, giving linear computational scaling in the horizon length for fixed $n_x$ and $n_u$.
 
-This is the structure exploited by high-performance nonlinear model predictive control solvers such as acados and HPIPM. The publication version of the method should implement this sparse solve explicitly. The notebook implementation intentionally keeps a condensed dense Gauss--Newton normal-equation solve because it is easier to reproduce in vanilla JAX on a CPU. Therefore, the condensed solve is a reproducibility convenience, not the final algorithmic end-state.-
+This is the structure exploited by high-performance nonlinear model predictive control solvers such as acados and HPIPM. The notebook implementation intentionally keeps a condensed dense Gauss-Newton normal-equation solve because it is easier to reproduce in vanilla JAX on a CPU. Therefore, the condensed solve is a reproducibility convenience, not the final algorithmic end-state. 
 
 
 
