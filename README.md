@@ -869,7 +869,112 @@ These constraints ensure that every predicted state trajectory is dynamically fe
 The least-squares construction is deliberate because it makes Gauss--Newton approximations natural and computationally efficient for nonlinear model predictive control.
 
 
+## VM-GN-RTI Algorithm Diagram
 
+Let
+
+```math
+n_x = 7,
+\qquad
+n_u = 2,
+\qquad
+z^{(i)} \in \mathbb{R}^{N n_u},
+\qquad
+i \in \{1,\ldots,M\}.
+```
+
+The algorithm uses a batch of $M$ candidate control sequences and performs $K$ Gauss--Newton sweeps for each candidate.
+
+```mermaid
+flowchart TD
+
+    A([Start at sampling instant t])
+
+    A --> B[Inputs]
+
+    B --> B1["Current state estimate: x_t ∈ R^{n_x}"]
+    B --> B2["Previous condensed control: z_prev ∈ R^{N n_u}"]
+    B --> B3["Nominal control template: U_ref ∈ R^{N × n_u}"]
+    B --> B4["Reference data over horizon: ref"]
+    B --> B5["Number of starts: M"]
+    B --> B6["GN sweeps per sample: K"]
+
+    B1 --> C
+    B2 --> C
+    B3 --> C
+    B4 --> C
+    B5 --> C
+    B6 --> C
+
+    C[Offline preparation]
+
+    C --> C1["Build equilibrium map and scenario references"]
+    C1 --> C2["JIT-compile rollout, residual, Jacobian, and batched update kernels"]
+
+    C2 --> D[Online optimization at sample t]
+
+    D --> E[Generate candidate controls]
+
+    E --> E1["Construct U^(1), ..., U^(M) ∈ R^{N × n_u}"]
+    E1 --> E2["Use shifted previous solution"]
+    E1 --> E3["Use equilibrium-consistent templates"]
+    E1 --> E4["Use steering pulses, force pulses, and small perturbations"]
+
+    E2 --> F
+    E3 --> F
+    E4 --> F
+
+    F[Map controls to unconstrained variables]
+
+    F --> F1["z_0^(i) = squash^{-1}(U^(i)) ∈ R^{N n_u}"]
+
+    F1 --> G{"For j = 0,...,K-1 and all candidates i in parallel"}
+
+    G --> H[Rollout dynamics]
+
+    H --> H1["x_{1:N}^{(i)} = scan(Φ_{Δt}, x_t, U(z_j^(i)))"]
+
+    H1 --> I[Compute residuals]
+
+    I --> I1["r_j^(i) = r(z_j^(i)) ∈ R^{n_r}"]
+
+    I1 --> J[Compute Jacobian]
+
+    J --> J1["J_j^(i) = ∂r/∂z evaluated at z_j^(i)"]
+    J1 --> J2["J_j^(i) ∈ R^{n_r × N n_u}"]
+
+    J2 --> K[Build Gauss--Newton system]
+
+    K --> K1["H_j^(i) = J_j^(i)^T J_j^(i) + λ I"]
+    K1 --> K2["H_j^(i) ∈ R^{N n_u × N n_u}"]
+    K --> K3["g_j^(i) = J_j^(i)^T r_j^(i)"]
+    K3 --> K4["g_j^(i) ∈ R^{N n_u}"]
+
+    K2 --> L[Solve linear system]
+    K4 --> L
+
+    L --> L1["Δz_j^(i) = - H_j^(i)^{-1} g_j^(i)"]
+
+    L1 --> M[Trust-region scaling]
+
+    M --> M1["z_{j+1}^{(i)} = z_j^(i) + α_j^(i) Δz_j^(i)"]
+
+    M1 --> G
+
+    G --> N[Candidate selection]
+
+    N --> N1["i* = argmin_i 1/2 || r(z_K^(i)) ||_2^2"]
+
+    N1 --> O[Apply first control]
+
+    O --> O1["u_t = U(z_K^(i*))_0 ∈ R^{n_u}"]
+
+    O1 --> P[Shift selected horizon]
+
+    P --> P1["Use shifted selected solution as warm start for next sample"]
+
+    P1 --> Q([End sampling step])
+```
 
 
 
