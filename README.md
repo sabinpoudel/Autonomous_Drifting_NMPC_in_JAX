@@ -592,9 +592,11 @@ The parameterization used in the reference implementation is listed below. These
 | Prediction horizon | $N$ | 15 | steps |
 
 
+---
+
 ## Optimal Control Problem
 
-At each sampling instant, the control sequence
+At each sampling instant, the optimizer computes a finite sequence of future control inputs:
 
 ```math
 U
@@ -603,12 +605,12 @@ U
 u_0,\ldots,u_{N-1}
 \right\},
 \qquad
-u_k \in \mathbb{R}^{2},
+u_k \in \mathbb{R}^{2}.
 ```
 
-is optimized over a finite prediction horizon of $N$ steps.
+This equation states that the decision variable of the controller is the control sequence $U$ over a prediction horizon of $N$ discrete time steps. Since $u_k \in \mathbb{R}^{2}$, each control input contains two components: the commanded steering rate and the rear longitudinal tire force.
 
-The discrete-time nonlinear dynamics constraints are
+The vehicle dynamics are enforced through the discrete-time nonlinear constraint
 
 ```math
 x_{k+1}
@@ -620,24 +622,24 @@ u_k,
 \mu_k
 \right),
 \qquad
-k = 0,\ldots,N-1,
+k = 0,\ldots,N-1.
 ```
 
-where $\Phi_{\Delta t}$ denotes a fixed-step fourth-order Runge--Kutta discretization of the continuous-time vehicle model.
+This equation maps the current state $x_k$ to the next state $x_{k+1}$ using the control input $u_k$ and friction coefficient $\mu_k$. The map $\Phi_{\Delta t}$ represents a fixed-step fourth-order Runge--Kutta discretization of the continuous-time vehicle model over the sample time $\Delta t$.
 
 ---
 
-### Circular-Drift Tracking Coordinates
-
 For circular-drift scenarios, the stage residual vector is constructed from geometric circle-tracking quantities rather than phase-locked global-position targets.
 
-Let $R$ be the desired drift radius and let the circle center be
+Let $R$ be the desired drift radius and let the center of the desired circular path be
 
 ```math
 (0,R).
 ```
 
-The radial distance and tangent-heading angle are defined as
+This specifies that the reference circle is centered at the global point $(0,R)$, so the desired drift trajectory is a circle of radius $R$ around that point.
+
+The radial distance from the vehicle to the circle center is
 
 ```math
 \rho_k
@@ -648,8 +650,12 @@ X_k^2
 \left(
 Y_k - R
 \right)^2
-},
+}.
 ```
+
+This equation computes the Euclidean distance between the vehicle position $(X_k,Y_k)$ and the circular-path center $(0,R)$. When $\rho_k = R$, the vehicle lies exactly on the desired circle.
+
+The tangent-heading coordinate is
 
 ```math
 \theta_k
@@ -664,13 +670,11 @@ R - Y_k
 \right).
 ```
 
-Here, $\rho_k$ measures the distance of the vehicle from the center of the desired drift circle, while $\theta_k$ defines the corresponding tangent-heading reference geometry.
+This equation defines the geometric angle associated with the tangent direction of the desired circular path. It is used to construct a heading reference that is compatible with circular drifting rather than with a fixed global waypoint sequence.
 
 ---
 
-### Stage Residuals
-
-The stage residual includes the radial tracking residual
+The radial tracking residual is
 
 ```math
 r_k^{(\rho)}
@@ -678,10 +682,12 @@ r_k^{(\rho)}
 \sqrt{w_{\rho}}
 \left(
 \rho_k - R
-\right),
+\right).
 ```
 
-the yaw-heading residual
+This residual penalizes deviation from the desired circular path. If $\rho_k > R$, the vehicle is outside the desired circle; if $\rho_k < R$, it is inside the desired circle. The weight $w_{\rho}$ controls the importance of radial tracking accuracy.
+
+The yaw-heading residual is
 
 ```math
 r_k^{(\psi)}
@@ -697,10 +703,12 @@ r_k^{(\psi)}
 -
 \beta^{ref}
 \right)
-\right),
+\right).
 ```
 
-the longitudinal-velocity residual
+This residual penalizes the difference between the actual yaw angle $\psi_k$ and the desired drift heading $\theta_k-\beta^{ref}$. The function $\mathrm{wrap}(\cdot)$ keeps the angular error within a principal interval so that equivalent angles differing by multiples of $2\pi$ are treated consistently.
+
+The longitudinal-velocity residual is
 
 ```math
 r_k^{(v_x)}
@@ -710,10 +718,12 @@ r_k^{(v_x)}
 v_{x,k}
 -
 v_x^{ref}
-\right),
+\right).
 ```
 
-the sideslip residual
+This residual penalizes deviation of the body-frame longitudinal speed $v_{x,k}$ from the desired reference speed $v_x^{ref}$. The weight $w_v$ determines how strongly the optimizer enforces forward-speed tracking.
+
+The body-sideslip residual is
 
 ```math
 r_k^{(\beta)}
@@ -723,10 +733,12 @@ r_k^{(\beta)}
 \beta_k
 -
 \beta^{ref}
-\right),
+\right).
 ```
 
-and the yaw-rate residual
+This residual penalizes deviation of the vehicle sideslip angle $\beta_k$ from the desired drift sideslip angle $\beta^{ref}$. It is especially important for drift control because the sideslip angle determines the orientation of the vehicle relative to its velocity direction.
+
+The yaw-rate residual is
 
 ```math
 r_k^{(r)}
@@ -739,11 +751,9 @@ r^{ref}
 \right).
 ```
 
-Together, these residuals penalize radial deviation, heading error, longitudinal-speed error, sideslip-angle error, and yaw-rate error.
+This residual penalizes the deviation of the yaw rate $r_k$ from the desired yaw rate $r^{ref}$. It regulates the rotational motion of the vehicle during circular drifting.
 
 ---
-
-### Control-Deviation Residual
 
 The control-deviation residual is
 
@@ -768,11 +778,9 @@ F_{x,r,k}^{ref}
 \end{bmatrix}.
 ```
 
-This term penalizes deviation of the steering-rate command and rear longitudinal-force command from their reference values.
+This residual penalizes deviation of the applied control inputs from their reference values. The first component penalizes steering-rate deviation, while the second component penalizes rear longitudinal-force deviation.
 
 ---
-
-### Control-Increment Residual
 
 The control-increment residual is
 
@@ -797,13 +805,11 @@ F_{x,r,k-1}
 \end{bmatrix}.
 ```
 
-This term penalizes rapid changes in steering-rate input and rear longitudinal-force input between consecutive time steps.
+This residual penalizes rapid changes between consecutive control inputs. It improves smoothness of the optimized control sequence and reduces aggressive steering-rate or force commands.
 
 ---
 
-### Soft Box-Constraint Residuals
-
-Softplus-smoothed box-envelope violations are included for the steering angle, body sideslip angle, and longitudinal velocity:
+Softplus-smoothed box-envelope violations are included for
 
 ```math
 \delta,
@@ -813,13 +819,11 @@ Softplus-smoothed box-envelope violations are included for the steering angle, b
 v_x.
 ```
 
-These residuals softly penalize violations of admissible operating envelopes while maintaining differentiability of the nonlinear least-squares problem.
+These soft residuals penalize violation of admissible operating bounds on steering angle, sideslip magnitude, and longitudinal speed. The use of smooth softplus penalties keeps the optimization problem differentiable, which is important for gradient-based nonlinear least-squares solvers.
 
 ---
 
-### Nonlinear Least-Squares Objective
-
-The resulting nonlinear least-squares optimal control problem is
+The nonlinear least-squares optimal control problem is
 
 ```math
 \min_{U}
@@ -840,10 +844,12 @@ r_N
 \left(
 x_N
 \right)
-\right\|_2^2,
+\right\|_2^2.
 ```
 
-subject to the nonlinear dynamics constraints
+This objective minimizes the sum of squared stage residuals over the prediction horizon, together with a terminal residual at the final predicted state. The factor $1/2$ is conventional in least-squares optimization because it simplifies gradient expressions.
+
+The optimization is subject to the nonlinear vehicle dynamics
 
 ```math
 x_{k+1}
@@ -858,7 +864,10 @@ u_k,
 k = 0,\ldots,N-1.
 ```
 
-The least-squares construction is deliberate because it makes Gauss--Newton approximations natural and computationally efficient.
+These constraints ensure that every predicted state trajectory is dynamically feasible according to the discretized vehicle model.
+
+The least-squares construction is deliberate because it makes Gauss--Newton approximations natural and computationally efficient for nonlinear model predictive control.
+
 
 
 
