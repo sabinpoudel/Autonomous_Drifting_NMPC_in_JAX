@@ -15,7 +15,7 @@ Consequently, autonomous drifting is  a spectacular aggressive-driving maneuver.
 Therefore, this works contributes on a solver organization for autonomous drifting NMPC. Specifically, the project formulates the drifting NMPC solve as a compiled differentiable program in JAX, combining batched candidate generation with a Gauss–Newton real-time iteration update. This organization makes the compile/runtime trade-off explicit, which is often hidden in classical external-solver workflows. It further exploits JAX transformations such as : `jit` for compiling fused numerical kernels, `vmap` for batched candidate evaluation, `scan` for compact fixed-horizon rollout, and checkpointing for memory–computation trade-offs during reverse-mode differentiation.
 
 
-# Vechile Model 
+# Vehicle Model 
 
 | Symbol | Description | Unit |
 |---|---|---|
@@ -64,7 +64,7 @@ Therefore, this works contributes on a solver organization for autonomous drifti
 
 
 
-This  continuous-time equations of motion for a nonlinear seven-state dynamic single-track vehicle model are described as below.The model describes planar vehicle motion using global position, yaw orientation, body-frame translational velocities, yaw rate, and front steering angle.
+The continuous-time equations of motion for a nonlinear seven-state dynamic single-track vehicle model are described as below.The model describes planar vehicle motion using global position, yaw orientation, body-frame translational velocities, yaw rate, and front steering angle.
 
 The system is written in nonlinear state-space form as
 
