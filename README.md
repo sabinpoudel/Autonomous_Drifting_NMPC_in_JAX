@@ -532,7 +532,7 @@ These expressions follow from static load distribution about the vehicle center 
 
 ---
 
-## 15. Model Characteristics
+## Model Characteristics
 
 This is a reduced-order drift-oriented dynamic bicycle model. It captures planar rigid-body kinematics, body-frame translational dynamics, yaw rotational dynamics, nonlinear tire-force saturation, steering-rate saturation, and simple longitudinal resistance.
 
