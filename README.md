@@ -975,7 +975,84 @@ flowchart TD
 
 
 
+## Condensed Control Parameterization
 
+To keep the implementation notebook compact, the decision variables are limited to controls. Box constraints are enforced by a smooth squashing map
+
+```math
+u_k
+=
+u_{\mathrm{mid}}
++
+u_{\mathrm{scale}}
+\odot
+\tanh
+\left(
+z_k
+\right),
+```
+
+where $z_k \in \mathbb{R}^{2}$ is unconstrained. Stacking all $z_k$ gives the condensed decision vector
+
+```math
+z
+=
+\begin{bmatrix}
+z_0 \\
+z_1 \\
+\vdots \\
+z_{N-1}
+\end{bmatrix}
+\in
+\mathbb{R}^{2N}.
+```
+
+The midpoint and scaling vectors are
+
+```math
+u_{\mathrm{mid}}
+=
+\frac{
+u_{\max}
++
+u_{\min}
+}{2},
+\qquad
+u_{\mathrm{scale}}
+=
+\frac{
+u_{\max}
+-
+u_{\min}
+}{2}.
+```
+
+Thus, the smooth map sends the unconstrained variable $z_k$ to a bounded physical control input $u_k$. Since
+
+```math
+-1
+<
+\tanh(z_k)
+<
+1,
+```
+
+the resulting control satisfies the control box constraints smoothly.
+
+The physical control sequence is recovered from the condensed variable as
+
+```math
+U(z)
+=
+\left\{
+u_0(z_0),
+u_1(z_1),
+\ldots,
+u_{N-1}(z_{N-1})
+\right\}.
+```
+
+This choice is practical for a self-contained JAX notebook, but it is also the main place where the reference implementation is less ambitious than a full paper-level formulation. A journal submission should move to full multiple shooting with explicit state variables if a native sparse Riccati/KKT structure is desired instead of condensed dense normal equations.
 
 
 
