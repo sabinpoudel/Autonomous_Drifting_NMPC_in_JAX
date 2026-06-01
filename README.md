@@ -592,6 +592,336 @@ The parameterization used in the reference implementation is listed below. These
 | Prediction horizon | $N$ | 15 | steps |
 
 
+## Optimal Control Problem
+
+At each sampling instant, the control sequence
+
+```math
+U
+=
+\left\{
+u_0,\ldots,u_{N-1}
+\right\},
+\qquad
+u_k \in \mathbb{R}^{2},
+```
+
+is optimized over a finite prediction horizon of $N$ steps.
+
+The discrete-time nonlinear dynamics constraints are
+
+```math
+x_{k+1}
+=
+\Phi_{\Delta t}
+\left(
+x_k,
+u_k,
+\mu_k
+\right),
+\qquad
+k = 0,\ldots,N-1,
+```
+
+where $\Phi_{\Delta t}$ denotes a fixed-step fourth-order Runge--Kutta discretization of the continuous-time vehicle model.
+
+---
+
+### Circular-Drift Tracking Coordinates
+
+For circular-drift scenarios, the stage residual vector is constructed from geometric circle-tracking quantities rather than phase-locked global-position targets.
+
+Let $R$ be the desired drift radius and let the circle center be
+
+```math
+(0,R).
+```
+
+The radial distance and tangent-heading angle are defined as
+
+```math
+\rho_k
+=
+\sqrt{
+X_k^2
++
+\left(
+Y_k - R
+\right)^2
+},
+```
+
+```math
+\theta_k
+=
+\arctan
+\left(
+\frac{
+X_k
+}{
+R - Y_k
+}
+\right).
+```
+
+Here, $\rho_k$ measures the distance of the vehicle from the center of the desired drift circle, while $\theta_k$ defines the corresponding tangent-heading reference geometry.
+
+---
+
+### Stage Residuals
+
+The stage residual includes the radial tracking residual
+
+```math
+r_k^{(\rho)}
+=
+\sqrt{w_{\rho}}
+\left(
+\rho_k - R
+\right),
+```
+
+the yaw-heading residual
+
+```math
+r_k^{(\psi)}
+=
+\sqrt{w_{\psi}}
+\,
+\mathrm{wrap}
+\left(
+\psi_k
+-
+\left(
+\theta_k
+-
+\beta^{ref}
+\right)
+\right),
+```
+
+the longitudinal-velocity residual
+
+```math
+r_k^{(v_x)}
+=
+\sqrt{w_v}
+\left(
+v_{x,k}
+-
+v_x^{ref}
+\right),
+```
+
+the sideslip residual
+
+```math
+r_k^{(\beta)}
+=
+\sqrt{w_{\beta}}
+\left(
+\beta_k
+-
+\beta^{ref}
+\right),
+```
+
+and the yaw-rate residual
+
+```math
+r_k^{(r)}
+=
+\sqrt{w_r}
+\left(
+r_k
+-
+r^{ref}
+\right).
+```
+
+Together, these residuals penalize radial deviation, heading error, longitudinal-speed error, sideslip-angle error, and yaw-rate error.
+
+---
+
+### Control-Deviation Residual
+
+The control-deviation residual is
+
+```math
+r_k^{(u)}
+=
+\begin{bmatrix}
+\sqrt{w_{\dot{\delta}}}
+\left(
+\dot{\delta}_k
+-
+\dot{\delta}_k^{ref}
+\right)
+\\
+
+\sqrt{w_F}
+\left(
+F_{x,r,k}
+-
+F_{x,r,k}^{ref}
+\right)
+\end{bmatrix}.
+```
+
+This term penalizes deviation of the steering-rate command and rear longitudinal-force command from their reference values.
+
+---
+
+### Control-Increment Residual
+
+The control-increment residual is
+
+```math
+r_k^{(\Delta u)}
+=
+\begin{bmatrix}
+\sqrt{w_{\Delta\dot{\delta}}}
+\left(
+\dot{\delta}_k
+-
+\dot{\delta}_{k-1}
+\right)
+\\
+
+\sqrt{w_{\Delta F}}
+\left(
+F_{x,r,k}
+-
+F_{x,r,k-1}
+\right)
+\end{bmatrix}.
+```
+
+This term penalizes rapid changes in steering-rate input and rear longitudinal-force input between consecutive time steps.
+
+---
+
+### Soft Box-Constraint Residuals
+
+Softplus-smoothed box-envelope violations are included for the steering angle, body sideslip angle, and longitudinal velocity:
+
+```math
+\delta,
+\qquad
+|\beta|,
+\qquad
+v_x.
+```
+
+These residuals softly penalize violations of admissible operating envelopes while maintaining differentiability of the nonlinear least-squares problem.
+
+---
+
+### Nonlinear Least-Squares Objective
+
+The resulting nonlinear least-squares optimal control problem is
+
+```math
+\min_{U}
+\;
+\frac{1}{2}
+\sum_{k=0}^{N-1}
+\left\|
+r_k
+\left(
+x_k,
+u_k
+\right)
+\right\|_2^2
++
+\frac{1}{2}
+\left\|
+r_N
+\left(
+x_N
+\right)
+\right\|_2^2,
+```
+
+subject to the nonlinear dynamics constraints
+
+```math
+x_{k+1}
+=
+\Phi_{\Delta t}
+\left(
+x_k,
+u_k,
+\mu_k
+\right),
+\qquad
+k = 0,\ldots,N-1.
+```
+
+The least-squares construction is deliberate because it makes Gauss--Newton approximations natural and computationally efficient.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
