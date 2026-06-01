@@ -568,7 +568,28 @@ The model deliberately remains reduced-order. It does not explicitly include loa
 
 ---
 
+## Parameterization
 
+The parameterization used in the reference implementation is listed below. These values are **simulation parameters for the supplied notebook implementation** and are **not experimentally identified vehicle parameters**.
+
+| Parameter | Symbol | Value | Unit |
+|---|---:|---:|---|
+| Mass | $m$ | 1800 | kg |
+| Yaw inertia | $I_z$ | 2800 | kg m² |
+| Front center-of-gravity distance | $\ell_f$ | 1.2 | m |
+| Rear center-of-gravity distance | $\ell_r$ | 1.6 | m |
+| Gravity | $g$ | 9.81 | m/s² |
+| Front Pacejka stiffness parameter | $B_f$ | 10.0 | — |
+| Front Pacejka shape parameter | $C_f$ | 1.3 | — |
+| Rear Pacejka stiffness parameter | $B_r$ | 9.0 | — |
+| Rear Pacejka shape parameter | $C_r$ | 1.25 | — |
+| Steering-angle limit | $\delta_{\max}$ | 0.6 | rad |
+| Steering-rate limit | $\dot{\delta}_{\max}$ | 1.5 | rad/s |
+| Rear longitudinal-force maximum | $F_{x,r}^{\max}$ | 5000 | N |
+| Rear longitudinal-force minimum | $F_{x,r}^{\min}$ | -4000 | N |
+| Nominal tire-road friction coefficient | $\mu_{\mathrm{nom}}$ | 0.95 | — |
+| Sample time | $\Delta t$ | 0.08 | s |
+| Prediction horizon | $N$ | 15 | steps |
 
 
 
