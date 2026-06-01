@@ -16,8 +16,7 @@ Therefore, this works contributes on a solver organization for autonomous drifti
 
 
 # Vechile Model 
-````markdown
-## Vehicle Model
+
 
 The reference implementation uses a seven-state dynamic single-track vehicle model:
 
