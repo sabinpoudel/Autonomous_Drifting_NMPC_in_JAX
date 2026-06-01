@@ -489,7 +489,6 @@ The complete model combines:
 - steering actuator saturation
 - aerodynamic and rolling resistance
 
----
 
 ## 
 
