@@ -492,41 +492,8 @@ C_{rr} m g
 ```
 
 ---
-The model is nonlinear due to the trigonometric terms
 
-```math
-\sin \psi,
-\qquad
-\cos \psi,
-\qquad
-\sin \delta,
-\qquad
-\cos \delta
-```
 
-and due to the possibly nonlinear force relationships
-
-```math
-F_{y,f}
-=
-f_f(\alpha_f)
-```
-
-```math
-F_{y,r}
-=
-f_r(\alpha_r)
-```
-
-```math
-F_{\mathrm{drag}}
-=
-F_{\mathrm{drag}}(v_x)
-```
-
-This model couples planar rigid-body kinematics, translational dynamics, yaw rotational dynamics, tire-road interaction, aerodynamic resistance, and steering actuator saturation.
-
----
 
 
 
