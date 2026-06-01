@@ -869,8 +869,6 @@ These constraints ensure that every predicted state trajectory is dynamically fe
 The least-squares construction is deliberate because it makes Gauss--Newton approximations natural and computationally efficient for nonlinear model predictive control.
 
 
-## VM-GN-RTI Algorithm Diagram
-
 
 ## VM-GN-RTI Algorithm Diagram
 
