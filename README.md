@@ -17,10 +17,6 @@ Therefore, this works contributes on a solver organization for autonomous drifti
 
 # Vechile Model 
 
-# Seven-State Dynamic Single-Track Vehicle Model
-
-## 1. Complete Symbol Table
-
 | Symbol | Description | Unit |
 |---|---|---|
 | `x` | State vector | — |
@@ -65,13 +61,10 @@ Therefore, this works contributes on a solver organization for autonomous drifti
 | `g` | Gravitational acceleration | m/s² |
 | `\mathrm{sat}(\cdot)` | Steering-rate saturation function | — |
 
----
 
-## 2. Overview
 
-This document presents the continuous-time equations of motion for a nonlinear seven-state dynamic single-track vehicle model, also known as the dynamic bicycle model.
 
-The model describes planar vehicle motion using global position, yaw orientation, body-frame translational velocities, yaw rate, and front steering angle.
+This  continuous-time equations of motion for a nonlinear seven-state dynamic single-track vehicle model are described as below.The model describes planar vehicle motion using global position, yaw orientation, body-frame translational velocities, yaw rate, and front steering angle.
 
 The system is written in nonlinear state-space form as
 
@@ -81,9 +74,6 @@ The system is written in nonlinear state-space form as
 
 where `x` is the state vector and `u` is the control input vector.
 
----
-
-## 3. State Vector
 
 The state vector is defined as
 
@@ -93,11 +83,6 @@ x =
 X & Y & \psi & v_x & v_y & r & \delta
 \end{bmatrix}^{T}
 ```
-
----
-
-## 4. Control Input Vector
-
 The control input vector is
 
 ```math
@@ -106,10 +91,6 @@ u =
 \dot{\delta}_{cmd} & F_{x,r}
 \end{bmatrix}^{T}
 ```
-
----
-
-## 5. Continuous-Time Dynamics
 
 The continuous-time dynamics are given by
 
@@ -180,10 +161,6 @@ r v_x
 \right)
 ```
 
----
-
-## 6. Compact Vector Form
-
 The complete nonlinear state-space model can be written as
 
 ```math
@@ -237,9 +214,6 @@ r v_x \\
 \end{bmatrix}
 ```
 
----
-
-## 7. Coordinate Transformation
 
 The velocity components `v_x` and `v_y` are expressed in the vehicle body-fixed frame.
 
@@ -300,8 +274,6 @@ v_y \cos \psi
 
 ---
 
-## 8. Longitudinal Dynamics
-
 The longitudinal body-frame dynamics are
 
 ```math
@@ -326,9 +298,6 @@ The term `-F_{\mathrm{drag}}(v_x)` represents aerodynamic drag and other speed-d
 
 The term `r v_y` is a body-frame coupling term caused by the rotating vehicle coordinate frame.
 
----
-
-## 9. Lateral Dynamics
 
 The lateral body-frame dynamics are
 
@@ -350,9 +319,6 @@ The term `F_{y,r}` is the rear lateral tire force.
 
 The term `-r v_x` is the lateral inertial coupling term caused by expressing the translational dynamics in the rotating body-fixed frame.
 
----
-
-## 10. Yaw Dynamics
 
 The yaw dynamics are obtained from the rotational equation of motion about the vertical axis through the vehicle center of mass:
 
@@ -384,9 +350,6 @@ Thus,
 }{I_z}
 ```
 
----
-
-## 11. Steering Dynamics
 
 The steering angle is treated as a dynamic state. Its evolution is governed by
 
@@ -436,8 +399,6 @@ A symmetric steering-rate saturation model is
 
 ---
 
-## 12. Tire Force Model
-
 The lateral tire forces are nonlinear functions of the front and rear slip angles:
 
 ```math
@@ -467,9 +428,6 @@ C_r \alpha_r
 ```
 
 ---
-
-## 13. Slip-Angle Definitions
-
 The front and rear slip angles may be defined as
 
 ```math
@@ -507,8 +465,6 @@ The rear slip angle depends on the lateral velocity `v_y` and the yaw-rate contr
 
 ---
 
-## 14. Drag Force Model
-
 The longitudinal resistive force is written as
 
 ```math
@@ -536,9 +492,6 @@ C_{rr} m g
 ```
 
 ---
-
-## 15. Model Characteristics
-
 The model is nonlinear due to the trigonometric terms
 
 ```math
