@@ -16,12 +16,36 @@ Therefore, this works contributes on a solver organization for autonomous drifti
 
 
 # Vechile Model 
-The vehicle is modeled using a seven-state dynamic single-track model with state vector
+````markdown
+## Vehicle Model
 
+The reference implementation uses a seven-state dynamic single-track vehicle model:
 
-$$ x = \begin{bmatrix} X & Y & \psi & v_x & v_y & r & \delta \end{bmatrix}^{T} $$ where \(X\) and \(Y\) are the global vehicle positions, \(\psi\) is the yaw angle, \(v_x\) and \(v_y\) are the longitudinal and lateral velocities in the vehicle body frame, \(r\) is the yaw rate, and \(\delta\) is the front steering angle. Thus, the term **seven-state** means that the model tracks seven quantities required to describe the vehicle position, orientation, velocity, yaw motion, and steering configuration.
+```math
+x =
+\begin{bmatrix}
+X & Y & \psi & v_x & v_y & r & \delta
+\end{bmatrix}^{T},
+\qquad
+u =
+\begin{bmatrix}
+\dot{\delta} & F_{x,r}
+\end{bmatrix}^{T}
+````
 
-and control input vector
+where:
+
+* `X, Y` are the global vehicle coordinates.
+* `ψ` is the yaw angle.
+* `v_x, v_y` are the body-frame longitudinal and lateral velocities.
+* `r` is the yaw rate.
+* `δ` is the front steering angle.
+* `\dot{δ}` is the steering-rate input.
+* `F_{x,r}` is the rear longitudinal tire force.
+
+```
+```
+
 
 
 
