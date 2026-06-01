@@ -594,7 +594,7 @@ The parameterization used in the reference implementation is listed below. These
 
 ---
 
-## Optimal Control Problem
+##  Optimal Control Problem
 
 At each sampling instant, the optimizer computes a finite sequence of future control inputs:
 
@@ -871,7 +871,10 @@ The least-squares construction is deliberate because it makes Gauss--Newton appr
 
 ## VM-GN-RTI Algorithm Diagram
 
-Let
+
+## VM-GN-RTI Algorithm Diagram
+
+The VM-GN-RTI algorithm uses a batch of candidate control sequences and applies a small number of Gauss--Newton sweeps before selecting the best candidate.
 
 ```math
 n_x = 7,
@@ -880,10 +883,8 @@ n_u = 2,
 \qquad
 z^{(i)} \in \mathbb{R}^{N n_u},
 \qquad
-i \in \{1,\ldots,M\}.
+i = 1,\ldots,M.
 ```
-
-The algorithm uses a batch of $M$ candidate control sequences and performs $K$ Gauss--Newton sweeps for each candidate.
 
 ```mermaid
 flowchart TD
@@ -892,90 +893,86 @@ flowchart TD
 
     A --> B[Inputs]
 
-    B --> B1["Current state estimate: x_t ∈ R^{n_x}"]
-    B --> B2["Previous condensed control: z_prev ∈ R^{N n_u}"]
-    B --> B3["Nominal control template: U_ref ∈ R^{N × n_u}"]
-    B --> B4["Reference data over horizon: ref"]
-    B --> B5["Number of starts: M"]
-    B --> B6["GN sweeps per sample: K"]
+    B --> B1["Current state estimate<br/>xₜ ∈ ℝⁿˣ"]
+    B --> B2["Previous condensed control parameterization<br/>z_prev ∈ ℝᴺⁿᵘ"]
+    B --> B3["Nominal control template<br/>U_ref ∈ ℝᴺˣⁿᵘ"]
+    B --> B4["Reference data over horizon<br/>ref"]
+    B --> B5["Number of candidate starts<br/>M"]
+    B --> B6["Gauss--Newton sweeps per sample<br/>K"]
 
-    B1 --> C
+    B1 --> C[Offline preparation]
     B2 --> C
     B3 --> C
     B4 --> C
     B5 --> C
     B6 --> C
 
-    C[Offline preparation]
-
-    C --> C1["Build equilibrium map and scenario references"]
-    C1 --> C2["JIT-compile rollout, residual, Jacobian, and batched update kernels"]
+    C --> C1["Build equilibrium map<br/>and scenario references"]
+    C1 --> C2["JIT-compile rollout, residual,<br/>Jacobian, and batched update kernels"]
 
     C2 --> D[Online optimization at sample t]
 
     D --> E[Generate candidate controls]
 
-    E --> E1["Construct U^(1), ..., U^(M) ∈ R^{N × n_u}"]
+    E --> E1["Candidate controls<br/>U⁽¹⁾, ..., U⁽ᴹ⁾ ∈ ℝᴺˣⁿᵘ"]
     E1 --> E2["Use shifted previous solution"]
     E1 --> E3["Use equilibrium-consistent templates"]
-    E1 --> E4["Use steering pulses, force pulses, and small perturbations"]
+    E1 --> E4["Use steering pulses,<br/>longitudinal-force pulses,<br/>and small perturbations"]
 
-    E2 --> F
+    E2 --> F[Map controls to unconstrained variables]
     E3 --> F
     E4 --> F
 
-    F[Map controls to unconstrained variables]
+    F --> F1["Initial unconstrained candidates<br/>z₀⁽ⁱ⁾ = squash⁻¹(U⁽ⁱ⁾)<br/>z₀⁽ⁱ⁾ ∈ ℝᴺⁿᵘ"]
 
-    F --> F1["z_0^(i) = squash^{-1}(U^(i)) ∈ R^{N n_u}"]
-
-    F1 --> G{"For j = 0,...,K-1 and all candidates i in parallel"}
+    F1 --> G{"For j = 0,...,K−1<br/>and for all candidates i in parallel"}
 
     G --> H[Rollout dynamics]
 
-    H --> H1["x_{1:N}^{(i)} = scan(Φ_{Δt}, x_t, U(z_j^(i)))"]
+    H --> H1["Predicted trajectory<br/>x₁:ₙ⁽ⁱ⁾ = scan(ΦΔt, xₜ, U(zⱼ⁽ⁱ⁾))"]
 
     H1 --> I[Compute residuals]
 
-    I --> I1["r_j^(i) = r(z_j^(i)) ∈ R^{n_r}"]
+    I --> I1["Residual vector<br/>rⱼ⁽ⁱ⁾ = r(zⱼ⁽ⁱ⁾)<br/>rⱼ⁽ⁱ⁾ ∈ ℝⁿʳ"]
 
     I1 --> J[Compute Jacobian]
 
-    J --> J1["J_j^(i) = ∂r/∂z evaluated at z_j^(i)"]
-    J1 --> J2["J_j^(i) ∈ R^{n_r × N n_u}"]
+    J --> J1["Residual Jacobian<br/>Jⱼ⁽ⁱ⁾ = ∂r / ∂z evaluated at zⱼ⁽ⁱ⁾"]
+    J1 --> J2["Jacobian dimension<br/>Jⱼ⁽ⁱ⁾ ∈ ℝⁿʳˣᴺⁿᵘ"]
 
-    J2 --> K[Build Gauss--Newton system]
+    J2 --> K1[Build Gauss--Newton system]
 
-    K --> K1["H_j^(i) = J_j^(i)^T J_j^(i) + λ I"]
-    K1 --> K2["H_j^(i) ∈ R^{N n_u × N n_u}"]
-    K --> K3["g_j^(i) = J_j^(i)^T r_j^(i)"]
-    K3 --> K4["g_j^(i) ∈ R^{N n_u}"]
+    K1 --> K2["Approximate Hessian<br/>Hⱼ⁽ⁱ⁾ = Jⱼ⁽ⁱ⁾ᵀ Jⱼ⁽ⁱ⁾ + λI"]
+    K2 --> K3["Hessian dimension<br/>Hⱼ⁽ⁱ⁾ ∈ ℝᴺⁿᵘˣᴺⁿᵘ"]
 
-    K2 --> L[Solve linear system]
-    K4 --> L
+    K1 --> K4["Gradient vector<br/>gⱼ⁽ⁱ⁾ = Jⱼ⁽ⁱ⁾ᵀ rⱼ⁽ⁱ⁾"]
+    K4 --> K5["Gradient dimension<br/>gⱼ⁽ⁱ⁾ ∈ ℝᴺⁿᵘ"]
 
-    L --> L1["Δz_j^(i) = - H_j^(i)^{-1} g_j^(i)"]
+    K3 --> L[Solve linear system]
+    K5 --> L
 
-    L1 --> M[Trust-region scaling]
+    L --> L1["Gauss--Newton step<br/>Δzⱼ⁽ⁱ⁾ = − Hⱼ⁽ⁱ⁾⁻¹ gⱼ⁽ⁱ⁾"]
 
-    M --> M1["z_{j+1}^{(i)} = z_j^(i) + α_j^(i) Δz_j^(i)"]
+    L1 --> M1[Trust-region scaling]
 
-    M1 --> G
+    M1 --> M2["Scaled update<br/>zⱼ₊₁⁽ⁱ⁾ = zⱼ⁽ⁱ⁾ + αⱼ⁽ⁱ⁾ Δzⱼ⁽ⁱ⁾"]
+
+    M2 --> G
 
     G --> N[Candidate selection]
 
-    N --> N1["i* = argmin_i 1/2 || r(z_K^(i)) ||_2^2"]
+    N --> N1["Select best candidate<br/>i* = argminᵢ 1/2 ‖r(zᴷ⁽ⁱ⁾)‖₂²"]
 
     N1 --> O[Apply first control]
 
-    O --> O1["u_t = U(z_K^(i*))_0 ∈ R^{n_u}"]
+    O --> O1["Applied control<br/>uₜ = U(zᴷ⁽ⁱ*⁾)₀<br/>uₜ ∈ ℝⁿᵘ"]
 
     O1 --> P[Shift selected horizon]
 
-    P --> P1["Use shifted selected solution as warm start for next sample"]
+    P --> P1["Use shifted selected solution<br/>as warm start for next sample"]
 
     P1 --> Q([End sampling step])
 ```
-
 
 
 
