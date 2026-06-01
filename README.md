@@ -1050,10 +1050,126 @@ u_1(z_1),
 \ldots,
 u_{N-1}(z_{N-1})
 \right\}.
+``` 
+
+--## Structured Linear Solve
+
+The full multiple-shooting RTI derivation is still central even though the notebook implementation condenses the optimization problem to controls.
+
+If the optimization variables are the stage states and controls, the full multiple-shooting decision vector is
+
+```math
+w
+=
+\left[
+x_0,
+u_0,
+x_1,
+u_1,
+\ldots,
+x_{N-1},
+u_{N-1},
+x_N
+\right].
 ```
 
-This choice is practical for a self-contained JAX notebook, but it is also the main place where the reference implementation is less ambitious than a full paper-level formulation. A journal submission should move to full multiple shooting with explicit state variables if a native sparse Riccati/KKT structure is desired instead of condensed dense normal equations.
+This vector contains both the state corrections and the control corrections over the prediction horizon. Unlike the condensed formulation, the state trajectory is treated as an explicit optimization variable.
 
+The linearized dynamics are
+
+```math
+\Delta x_{k+1}
+=
+A_k \Delta x_k
++
+B_k \Delta u_k
++
+a_k.
+```
+
+This equation describes the first-order approximation of the discrete-time nonlinear vehicle dynamics around the current nominal trajectory. The vector $a_k$ is the affine defect term that accounts for the mismatch between the nominal rollout and the imposed shooting dynamics.
+
+The state and input Jacobians are
+
+```math
+A_k
+=
+\frac{\partial \Phi}{\partial x}
+\left(
+x_k,
+u_k
+\right),
+\qquad
+B_k
+=
+\frac{\partial \Phi}{\partial u}
+\left(
+x_k,
+u_k
+\right).
+```
+
+Here, $A_k$ measures the sensitivity of the next state with respect to the current state, while $B_k$ measures the sensitivity of the next state with respect to the current control input.
+
+For the seven-state vehicle model with two control inputs,
+
+```math
+A_k
+\in
+\mathbb{R}^{7 \times 7},
+\qquad
+B_k
+\in
+\mathbb{R}^{7 \times 2}.
+```
+
+Thus, each stage couples a seven-dimensional state correction to a two-dimensional control correction.
+
+Under a Gauss--Newton approximation, the RTI quadratic subproblem has the standard sparse KKT structure
+
+```math
+\begin{bmatrix}
+H_0 & G_0^{T} &        &        &        &        \\
+G_0 & 0       & -I     &        &        &        \\
+    & -I      & H_1    & G_1^{T}&        &        \\
+    &         & G_1    & 0      & \ddots &        \\
+    &         &        & \ddots & \ddots & H_N
+\end{bmatrix}
+\begin{bmatrix}
+\Delta x_0 \\
+\Delta u_0 \\
+\Delta x_1 \\
+\Delta u_1 \\
+\vdots
+\end{bmatrix}
+=
+-
+\begin{bmatrix}
+g_0 \\
+c_0 \\
+g_1 \\
+c_1 \\
+\vdots
+\end{bmatrix}.
+```
+
+This KKT system represents the first-order optimality conditions of the Gauss--Newton quadratic approximation. The matrices $H_k$ come from the local least-squares curvature, the vectors $g_k$ are local gradient terms, and the vectors $c_k$ represent linearized shooting-defect residuals.
+
+The block coupling matrix at each shooting interval is determined by the linearized dynamics:
+
+```math
+G_k
+=
+\begin{bmatrix}
+A_k & B_k
+\end{bmatrix}.
+```
+
+This block maps the state and control correction at stage $k$ to the predicted correction of the next state.
+
+Because only nearest-neighbor shooting defects couple consecutive stages, the KKT matrix is block banded. This structure can be exploited by Riccati recursion or sparse symmetric factorization, giving linear computational scaling in the horizon length for fixed $n_x$ and $n_u$.
+
+This is the structure exploited by high-performance nonlinear model predictive control solvers such as acados and HPIPM. The publication version of the method should implement this sparse solve explicitly. The notebook implementation intentionally keeps a condensed dense Gauss--Newton normal-equation solve because it is easier to reproduce in vanilla JAX on a CPU. Therefore, the condensed solve is a reproducibility convenience, not the final algorithmic end-state.-
 
 
 
