@@ -31,6 +31,7 @@ u =
 \begin{bmatrix}
 \dot{\delta} & F_{x,r}
 \end{bmatrix}^{T}
+
 ````
 
 where:
