@@ -39,7 +39,7 @@ where:
 * `v_x, v_y` are the body-frame longitudinal and lateral velocities.
 * `r` is the yaw rate.
 * `δ` is the front steering angle.
-* `\dot{δ}` is the steering-rate input.
+* `\dot{delta}` is the steering-rate input.
 * `F_{x,r}` is the rear longitudinal tire force.
 
 ```
