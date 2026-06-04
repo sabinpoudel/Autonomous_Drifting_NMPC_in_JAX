@@ -1,18 +1,679 @@
 <img width="1672" height="941" alt="image" src="https://github.com/user-attachments/assets/42b4ccc5-6d13-4260-9851-fbab32ccd9cb" />
 
-# Introductioin 
+# Introduction 
 
-Autonomous drifting is a challenging benchmark for advanced vehicle control because it intentionally operates the vehicle beyond the conventional stable-handling region. Unlike typical autonomous-driving controllers, which aim to limit tire slip and preserve lateral stability within near-linear tire-force regimes, drifting requires the deliberate generation and regulation of large sideslip angles while maintaining path tracking, yaw-rate stability, and actuator feasibility. Thus, drifting is relevant not only for aggressive maneuvering but also as a stress test for safety-critical control under emergency conditions, where vehicles may operate near or beyond tire saturation. Understanding and controlling vehicle motion in these regimes can improve robustness during extreme maneuvers, low-friction driving, obstacle avoidance, and loss-of-control recovery [1].
+Autonomous drifting is a nonlinear control problem in which a vehicle must intentionally operate near tire-force saturation while maintaining path tracking, sideslip regulation, yaw-rate regulation, and actuator feasibility. Unlike normal path-following control, drifting requires the vehicle to maintain a nonzero sideslip angle while following a reference trajectory.
 
-From a control-theoretic perspective, drifting is challenging because the vehicle dynamics are strongly nonlinear, practically underactuated, and highly sensitive to tire–road interactions. At large sideslip angles, tire forces become nonlinear and coupled through friction limits, load transfer, and saturation. So small changes in steering, throttle, braking, or road friction can cause large variations in yaw moment and sideslip dynamics. Moreover, steady-state drift conditions may correspond to unstable, saddle-type equilibria, requiring continuous feedback stabilization rather than simple reference tracking [2]. This fundamentally distinguishes autonomous drifting from conventional path-following control, which typically assumes operation near stable nominal motion.
+This repository studies circular drifting using nonlinear model predictive control. At every control step, the solver predicts the vehicle trajectory over a finite horizon, optimizes a sequence of steering-rate and rear-force inputs, applies the first control input, and repeats the process.
+
+The project focuses on three goals:
+
+- Build a fully differentiable NMPC solver in JAX.
+- Compare several JAX-based solver variants under the same drifting benchmark.
+- Compare the JAX solver family with ACADOS using closed-loop tracking and timing metrics.
+
+# Main Features
+- Dynamic single-track vehicle model with seven states.
+- Steering-rate and rear longitudinal-force inputs.
+- Simplified nonlinear Pacejka-type lateral tire model.
+- Rear lateral tire capacity coupled with rear longitudinal force.
+- Fourth-order Runge–Kutta integration.
+- Circular drift reference generation.
+- Feasibility search for drift equilibrium.
+- Condensed single-shooting NMPC formulation.
+- JAX automatic differentiation for gradients and Jacobians.
+- JAX jit compilation for fixed-structure solver kernels.
+- JAX vmap for vectorized multi-candidate control evaluation.
+- Gauss–Newton, matrix-free, first-order, Optax, and multiple-shooting solver variants.
+- ACADOS SQP-RTI and ACADOS SQP comparison.
+- Closed-loop benchmark with tracking, robustness, and timing metrics.
+  
+
+## Vehicle Model
+
+The vehicle state is
+
+```math
+x =
+\begin{bmatrix}
+X & Y & \psi & v_x & v_y & r & \delta
+\end{bmatrix}^T
+```
+
+where:
+
+| Symbol   | Description             |
+| -------- | ----------------------- |
+| `X, Y`   | Global vehicle position |
+| `\psi`   | Yaw angle               |
+| `v_x`    | Longitudinal velocity   |
+| `v_y`    | Lateral velocity        |
+| `r`      | Yaw rate                |
+| `\delta` | Steering angle          |
+
+The control input is
+
+```math
+u =
+\begin{bmatrix}
+\dot{\delta}_{cmd} & F_{x,r}
+\end{bmatrix}^T
+```
+
+where:
+
+| Symbol               | Description             |
+| -------------------- | ----------------------- |
+| `\dot{\delta}_{cmd}` | Steering-rate command   |
+| `F_{x,r}`            | Rear longitudinal force |
+
+### Continuous-Time Dynamics
+
+The continuous-time dynamics are
+
+```math
+\dot{X} = v_x \cos\psi - v_y \sin\psi
+```
+
+```math
+\dot{Y} = v_x \sin\psi + v_y \cos\psi
+```
+
+```math
+\dot{\psi} = r
+```
+
+```math
+\dot{v}_x =
+\frac{
+F_{x,r} - F_{y,f}\sin\delta - F_{drag}(v_x)
+}{m}
++ r v_y
+```
+
+```math
+\dot{v}_y =
+\frac{
+F_{y,f}\cos\delta + F_{y,r}
+}{m}
+- r v_x
+```
+
+```math
+\dot{r} =
+\frac{
+l_f F_{y,f}\cos\delta - l_r F_{y,r}
+}{I_z}
+```
+
+```math
+\dot{\delta} =
+\mathrm{sat}(\dot{\delta}_{cmd})
+```
+
+### Drag Force
+
+The drag force is
+
+```math
+F_{drag}(v_x) = c_2 v_x^2 + c_1 v_x
+```
+
+### Discrete-Time Model
+
+The model is discretized using fourth-order Runge--Kutta integration:
+
+```math
+x_{k+1} = f_d(x_k, u_k, \mu_k)
+```
 
 
-Within this research direction, nonlinear model predictive control is appealing because it can integrate nonlinear vehicle dynamics, state and input constraints, actuator limits, path-tracking objectives, and stability-related penalties within a single receding-horizon optimization framework. However, this expressiveness comes with substantial computational cost, as NMPC must solve a nonlinear optimal control problem at each sampling instant with sufficient speed and accuracy for closed-loop operation. This creates a key challenge for autonomous drifting: the controller must be both dynamically expressive and numerically reliable in a highly sensitive regime.
+## Tire Model
 
-Consequently, autonomous drifting is  a spectacular aggressive-driving maneuver. And, also it is a rigorous benchmark for nonlinear predictive control. A successful controller must stabilize an intrinsically unstable high-sideslip motion, manage nonlinear tire-force saturation, resolve competing path-tracking and drift-stabilization objectives, and do so under real-time computational constraints. These properties make drifting an ideal testbed for evaluating NMPC algorithms, solver warm-start strategies. Real time embedded optimal-control software/solver such as acados implementats with fast multiple-shooting NMPC with sensitivities and RTI-class solvers for embedded execution and focuses on efficient SQP/RTI implementations for general NMPC.This work studies a narrower question: whether a drifting NMPC solve can be reorganized as a compiled differentiable program that supports batched multi-start exploration and low-latency Gauss–Newton real-time iteration in JAX. 
+The front and rear slip angles are
+
+```math id="phxu0q"
+\alpha_f =
+\delta -
+\arctan2(v_y + l_f r, v_x)
+```
+
+```math id="pyls2b"
+\alpha_r =
+-\arctan2(v_y - l_r r, v_x)
+```
+
+The lateral tire forces use a simplified Pacejka-type saturation model:
+
+```math id="p6zmdu"
+F_{y,f}
+=
+D_f
+\sin
+\left(
+C_f \arctan(B_f \alpha_f)
+\right)
+```
+
+```math id="rbyzll"
+F_{y,r}
+=
+D_r
+\sin
+\left(
+C_r \arctan(B_r \alpha_r)
+\right)
+```
+
+The front tire capacity is
+
+```math id="c3yqot"
+D_f = \mu F_{z,f}
+```
+
+The rear lateral capacity is reduced by rear longitudinal force:
+
+```math id="3hhtff"
+D_r =
+10^{-4}
+\operatorname{softplus}
+\left(
+10^{-4}
+\left[
+(\mu F_{z,r})^2 - F_{x,r}^2
+\right]
+\right)
++
+10^{-6}
+```
+
+This smooth expression is used so that the tire-capacity model remains compatible with automatic differentiation.
+
+## Vehicle and Solver Parameters
+
+| Parameter              |               Symbol |         Value |
+| ---------------------- | -------------------: | ------------: |
+| Mass                   |                  `m` |     `1800 kg` |
+| Yaw inertia            |                `I_z` | `2800 kg m^2` |
+| Front axle distance    |                `l_f` |       `1.2 m` |
+| Rear axle distance     |                `l_r` |       `1.6 m` |
+| Gravity                |                  `g` |  `9.81 m/s^2` |
+| Friction coefficient   |                `\mu` |        `0.95` |
+| Maximum steering angle |       `\delta_{max}` |     `0.6 rad` |
+| Maximum steering rate  | `\dot{\delta}_{max}` |   `1.5 rad/s` |
+| Rear force minimum     |      `F_{x,r}^{min}` |     `-4000 N` |
+| Rear force maximum     |      `F_{x,r}^{max}` |      `5000 N` |
+| State dimension        |                `n_x` |           `7` |
+| Control dimension      |                `n_u` |           `2` |
+| Horizon length         |                  `N` |          `20` |
+| Sampling time          |           `\Delta t` |      `0.08 s` |
+| Prediction horizon     |      `T = N\Delta t` |       `1.6 s` |
 
 
-Therefore, this works contributes on a solver organization for autonomous drifting NMPC. Specifically, the project formulates the drifting NMPC solve as a compiled differentiable program in JAX, combining batched candidate generation with a Gauss–Newton real-time iteration update. This organization makes the compile/runtime trade-off explicit, which is often hidden in classical external-solver workflows. It further exploits JAX transformations such as : `jit` for compiling fused numerical kernels, `vmap` for batched candidate evaluation, `scan` for compact fixed-horizon rollout, and checkpointing for memory–computation trade-offs during reverse-mode differentiation.
+## Drift Reference
+
+The benchmark uses circular drifting.
+
+| Quantity                   |            Value |
+| -------------------------- | ---------------: |
+| Circle radius              |           `18 m` |
+| Reference speed            |          `8 m/s` |
+| Desired sideslip           |       `0.35 rad` |
+| Selected sideslip          |       `0.08 rad` |
+| Reference yaw rate         | `0.444444 rad/s` |
+| Equilibrium steering angle |   `0.183127 rad` |
+| Rear longitudinal force    |      `553.948 N` |
+| Equilibrium residual norm  |       `1.605758` |
+
+The reference yaw rate is
+
+```math
+r_{ref} = \frac{V}{R}
+```
+
+Using `V = 8 m/s` and `R = 18 m`,
+
+```math
+r_{ref} = \frac{8}{18} = 0.444444 \ \mathrm{rad/s}
+```
+
+Although the desired sideslip is `0.35 rad`, the feasibility search selects `0.08 rad`.
+
+Higher sideslip candidates require saturated steering and rear longitudinal force and produce larger equilibrium residuals.
+
+
+## NMPC Objective
+
+The controller solves a finite-horizon nonlinear least-squares problem:
+
+```math
+\min_Z \ \frac{1}{2} \left\| r(Z) \right\|_2^2
+```
+
+where `Z` is the normalized control sequence and `r(Z)` is the residual vector.
+
+The residual includes:
+
+* Position tracking error
+* Heading error
+* Velocity error
+* Sideslip error
+* Yaw-rate error
+* Steering error
+* Control effort
+* Control smoothness
+* Radial corridor penalty
+* Sideslip envelope penalty
+* Yaw-rate envelope penalty
+* Speed-limit penalty
+* Terminal tracking penalty
+
+The predicted trajectory is generated by
+
+```math
+x_{k+1} = f_d(x_k, u_k, \mu_k)
+```
+
+for
+
+```math
+k = 0, \dots, N-1
+```
+
+The objective can be written as
+
+```math
+J(Z)
+=
+\frac{1}{2}
+\sum_{k=0}^{N-1}
+\left\| r_k(Z) \right\|_2^2
++
+\frac{1}{2}
+\left\| r_N(Z) \right\|_2^2
+```
+
+## Proposed JAX Solver Architecture
+
+The main contribution of this project is a JAX-native differentiable NMPC solver architecture.
+
+The solver is designed around the following pipeline:
+
+```text
+Current state
+     ↓
+Shift previous solution
+     ↓
+Generate candidate control sequences
+     ↓
+Vectorized rollout and cost evaluation
+     ↓
+Select best candidate
+     ↓
+Apply fixed-iteration solver update
+     ↓
+Clip/control-normalize solution
+     ↓
+Apply first control input
+     ↓
+Warm-start next MPC step
+```
+
+The solver uses normalized controls so that steering rate and rear force have comparable numerical scales. This improves numerical conditioning because steering rate is measured in radians per second while rear force is measured in newtons.
+
+The normalized control vector is
+
+```math
+z_k =
+\begin{bmatrix}
+z_{\dot{\delta},k} \\
+z_{F,k}
+\end{bmatrix}
+```
+
+The physical control is recovered using
+
+```math
+\dot{\delta}_k =
+\dot{\delta}_{max} z_{\dot{\delta},k}
+```
+
+```math
+F_{x,r,k}
+=
+F_{mid}
++
+F_{half} z_{F,k}
+```
+
+where
+
+```math
+F_{mid}
+=
+\frac{
+F_{x,r}^{max} + F_{x,r}^{min}
+}{2}
+```
+
+and
+
+```math
+F_{half}
+=
+\frac{
+F_{x,r}^{max} - F_{x,r}^{min}
+}{2}
+```
+
+Using the force bounds,
+
+```math
+F_{mid} = 500 \ \mathrm{N}
+```
+
+```math
+F_{half} = 4500 \ \mathrm{N}
+```
+
+so
+
+```math
+F_{x,r,k}
+=
+500 + 4500 z_{F,k}
+```
+
+
+## Algorithm 1: Vectorized JAX NMPC Solver
+
+### Input
+
+* Current state `x_0`
+* Previous solution `Z_{prev}`
+* Previous applied control `u_{prev}`
+* Reference trajectory `X_{ref}`
+* Friction sequence `\mu`
+* Solver configuration
+
+### Output
+
+* First control input `u_0^\star`
+* Optimized control sequence `Z^\star`
+
+### Procedure
+
+```text id="3ltdky"
+1. Warm-start
+   Shift the previous solution:
+       Z_shift = shift(Z_prev)
+
+2. Candidate generation
+   Construct candidate control sequences:
+       - Shifted candidate
+       - Reference-control candidate
+       - Blended candidates
+       - Steering-pulse candidates
+       - Rear-force perturbation candidate
+       - Randomized perturbation candidate
+
+3. Vectorized rollout
+   For each candidate Z_i:
+       simulate x_0 over the horizon using RK4
+       compute residual vector r(Z_i)
+       compute objective J_i = 0.5 ||r(Z_i)||^2
+
+4. Candidate selection
+   Select the candidate with the minimum objective:
+       Z_0 = argmin_i J_i
+
+5. Solver update
+   Apply a fixed number of optimization iterations.
+
+   Depending on the selected method, use:
+       - Gauss-Newton update
+       - Lineax Gauss-Newton update
+       - Matrix-free Gauss-Newton update
+       - First-order update
+       - Optax update
+
+6. Acceptance
+   Accept the update only if the new objective improves.
+
+7. Projection
+   Clip normalized controls to feasible bounds.
+
+8. Control extraction
+   Convert z_0^* to physical control u_0^*.
+
+9. Return
+   Apply u_0^* and store Z^* for the next MPC step.
+```
+
+## Gauss--Newton Update
+
+For the least-squares objective
+
+```math id="r4ljf8"
+J(Z)
+=
+\frac{1}{2}
+\left\| r(Z) \right\|_2^2
+```
+
+the residual Jacobian is
+
+```math id="4kk97w"
+J_r(Z)
+=
+\frac{\partial r}{\partial Z}
+```
+
+The damped Gauss--Newton system is
+
+```math id="hu0h22"
+\left(
+J_r^T J_r + \lambda I
+\right)
+\Delta Z
+=
+-
+J_r^T r
+```
+
+The candidate update is
+
+```math id="puuisp"
+Z^+ = Z + \Delta Z
+```
+
+A trust-radius scaling is applied to limit overly large updates:
+
+```math id="7x8url"
+\Delta Z
+\leftarrow
+\Delta Z
+\min
+\left(
+1,
+\frac{
+\Delta_{trust}
+}{
+\left\| \Delta Z \right\| + 10^{-9}
+}
+\right)
+```
+
+The update is accepted only if it improves the objective:
+
+```math id="4o2hbr"
+J(Z + \Delta Z) \leq J(Z)
+```
+
+This improves robustness when nonlinear tire saturation makes the local linearization unreliable.
+
+
+## Solver Variants
+
+| ID    | Method             | Description                                            |
+| ----- | ------------------ | ------------------------------------------------------ |
+| `M01` | JAX SS-GN          | Single-shooting Gauss--Newton                          |
+| `M02` | JAX VM-GN          | Vectorized multi-candidate Gauss--Newton, 3 iterations |
+| `M03` | JAX VM-GN          | Vectorized multi-candidate Gauss--Newton, 8 iterations |
+| `M04` | JAX VM-GN + Lineax | Vectorized Gauss--Newton with Lineax solve             |
+| `M05` | JAX Matrix-Free GN | Matrix-free Gauss--Newton using JVP/VJP                |
+| `M06` | JAX First-Order    | Gradient-based first-order solver                      |
+| `M07` | JAX Optax          | Optax-based gradient solver                            |
+| `M08` | JAX MS-SQP         | JAX-native multiple-shooting SQP-style solver          |
+| `M09` | JAX MS-Lineax      | Multiple-shooting solver with Lineax                   |
+| `M10` | ACADOS SQP-RTI     | ACADOS real-time iteration                             |
+| `M11` | ACADOS SQP         | ACADOS SQP with 3 iterations                           |
+
+
+## Multiple-Shooting Formulation
+
+The JAX multiple-shooting solver optimizes both states and controls.
+
+The decision vector is
+
+```math id="fikd59"
+Y =
+\begin{bmatrix}
+x_1, \dots, x_N, z_0, \dots, z_{N-1}
+\end{bmatrix}
+```
+
+The dynamic defect is
+
+```math id="o4avul"
+d_k =
+x_{k+1}
+-
+f_d(x_k, u_k, \mu_k)
+```
+
+A perfectly dynamically feasible trajectory satisfies
+
+```math id="z3jblt"
+d_k = 0
+```
+
+The multiple-shooting objective includes weighted defect residuals:
+
+```math id="ns3eaq"
+r_{d,k}
+=
+\sqrt{w_d} d_k
+```
+
+and the full objective is
+
+```math id="ingywe"
+J_{MS}(Y)
+=
+\frac{1}{2}
+\left\|
+r_{MS}(Y)
+\right\|_2^2
+```
+
+This formulation is closer to SQP-style optimal-control solvers such as ACADOS, but it has a larger decision vector than condensed single shooting.
+
+
+## Benchmark Results
+
+The benchmark uses a `40`-step closed-loop circular drift simulation.
+
+### Tracking Performance
+
+| Method          | Mean position error `[m]` | Max position error `[m]` | Mean radial error `[m]` | Max corridor violation `[m]` | Success fraction |
+| --------------- | ------------------------: | -----------------------: | ----------------------: | ---------------------------: | ---------------: |
+| JAX First-Order |                `0.019630` |               `0.053098` |              `0.005960` |                   `0.000000` |            `1.0` |
+| JAX SS-GN       |                 `0.02198` |                `0.04901` |                     `—` |                   `0.000000` |            `1.0` |
+| JAX VM-GN       |                  `0.0221` |                 `0.0498` |                     `—` |                   `0.000000` |            `1.0` |
+| JAX MS-SQP      |                 `0.02256` |                `0.05246` |                     `—` |                   `0.000000` |            `1.0` |
+| ACADOS SQP-RTI  |                 `1.01196` |                `3.06727` |               `0.98667` |                    `0.41935` |            `0.9` |
+| ACADOS SQP      |                 `1.01196` |                `3.06727` |               `0.98667` |                    `0.41935` |            `0.9` |
+
+The JAX methods achieve lower tracking error and zero corridor violation in this benchmark. ACADOS achieves much faster solve time but larger closed-loop tracking errors.
+
+### Timing Performance
+
+| Method             | Mean solve time `[ms]` | p95 solve time `[ms]` | Max solve time `[ms]` |
+| ------------------ | ---------------------: | --------------------: | --------------------: |
+| ACADOS SQP-RTI     |              `0.66819` |             `0.75412` |             `0.90134` |
+| ACADOS SQP         |              `0.78972` |             `1.04535` |             `1.34253` |
+| JAX First-Order    |             `43.79811` |            `18.90490` |          `1128.94064` |
+| JAX SS-GN          |             `53.46737` |            `13.22111` |          `1716.46886` |
+| JAX Matrix-Free GN |             `69.26162` |            `18.94278` |          `2161.54073` |
+| JAX VM-GN, 3 iters |            `143.73028` |                   `—` |                   `—` |
+| JAX VM-GN, 8 iters |                 `~288` |                   `—` |                   `—` |
+
+ACADOS is significantly faster in raw online solve time. The JAX methods provide stronger closed-loop tracking in this benchmark but are slightly slower, especially when first-step timing spikes are included.
+
+
+
+# Results
+
+<img width="1894" height="1429" alt="image" src="https://github.com/user-attachments/assets/9e43e008-6aea-481a-bff6-4de2ec0a7741" />
+
+Caption: Closed-loop circular drifting trajectories for all solvers. JAX methods remain close to the reference trajectory, while ACADOS trajectories show larger radial deviation in this benchmark.
+
+<img width="1926" height="916" alt="image" src="https://github.com/user-attachments/assets/44beb038-eb7b-4f8b-aff5-9827cbe13e98" />
+
+Caption: Per-step position tracking error over the 40-step benchmark. JAX methods maintain low tracking error, while ACADOS accumulates larger error.
+
+<img width="1926" height="916" alt="image" src="https://github.com/user-attachments/assets/24bc2fc9-fd33-4184-8e65-e8df7c62c5b2" />
+
+Caption : Radial error relative to the circular reference. JAX methods remain within the corridor, while ACADOS violates the corridor near the end of the run.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # Vehicle Model 
@@ -69,1165 +730,6 @@ Therefore, this works contributes on a solver organization for autonomous drifti
 | $\mathrm{sat}(\cdot)$ | Steering-rate saturation function | — |
 
 ---
-The model below describes seven-state dynamic single-track vehicle model planar vehicle motion using global position, yaw orientation, body-frame translational velocities, yaw rate, and front steering angle.
-
-The model is written in continuous-time nonlinear state-space form as
-
-```math
-\dot{x} = f(x,u)
-```
-
-with state vector
-
-```math
-x =
-\begin{bmatrix}
-X & Y & \psi & v_x & v_y & r & \delta
-\end{bmatrix}^{T}
-```
-
-and control input vector
-
-```math
-u =
-\begin{bmatrix}
-\dot{\delta}_{cmd} & F_{x,r}
-\end{bmatrix}^{T}.
-```
---- 
-
-The continuous-time vehicle dynamics are
-
-```math
-\dot{X}
-=
-v_x \cos \psi
--
-v_y \sin \psi,
-```
-
-```math
-\dot{Y}
-=
-v_x \sin \psi
-+
-v_y \cos \psi,
-```
-
-```math
-\dot{\psi}
-=
-r,
-```
-
-```math
-\dot{v}_x
-=
-\frac{
-F_{x,r}
--
-F_{y,f}\sin\delta
--
-F_{\mathrm{drag}}(v_x)
-}{m}
-+
-r v_y,
-```
-
-```math
-\dot{v}_y
-=
-\frac{
-F_{y,f}\cos\delta
-+
-F_{y,r}
-}{m}
--
-r v_x,
-```
-
-```math
-\dot{r}
-=
-\frac{
-\ell_f F_{y,f}\cos\delta
--
-\ell_r F_{y,r}
-}{I_z},
-```
-
-```math
-\dot{\delta}
-=
-\mathrm{sat}
-\left(
-\dot{\delta}_{cmd}
-\right).
-```
-
-Equivalently, the complete nonlinear vector field can be written as
-
-```math
-\dot{x}
-=
-\begin{bmatrix}
-\dot{X} \\
-\dot{Y} \\
-\dot{\psi} \\
-\dot{v}_x \\
-\dot{v}_y \\
-\dot{r} \\
-\dot{\delta}
-\end{bmatrix}
-=
-\begin{bmatrix}
-v_x \cos \psi - v_y \sin \psi \\
-
-v_x \sin \psi + v_y \cos \psi \\
-
-r \\
-
-\dfrac{
-F_{x,r}
--
-F_{y,f}\sin\delta
--
-F_{\mathrm{drag}}(v_x)
-}{m}
-+
-r v_y \\
-
-\dfrac{
-F_{y,f}\cos\delta
-+
-F_{y,r}
-}{m}
--
-r v_x \\
-
-\dfrac{
-\ell_f F_{y,f}\cos\delta
--
-\ell_r F_{y,r}
-}{I_z} \\
-
-\mathrm{sat}
-\left(
-\dot{\delta}_{cmd}
-\right)
-\end{bmatrix}.
-```
-
----
-
-The variables $v_x$ and $v_y$ are expressed in the vehicle body-fixed frame. The global position dynamics are obtained by rotating the body-frame velocity vector into the inertial frame:
-
-```math
-\begin{bmatrix}
-\dot{X} \\
-\dot{Y}
-\end{bmatrix}
-=
-\begin{bmatrix}
-\cos\psi & -\sin\psi \\
-\sin\psi & \cos\psi
-\end{bmatrix}
-\begin{bmatrix}
-v_x \\
-v_y
-\end{bmatrix}.
-```
-
-This gives
-
-```math
-\dot{X}
-=
-v_x \cos\psi
--
-v_y \sin\psi,
-```
-
-```math
-\dot{Y}
-=
-v_x \sin\psi
-+
-v_y \cos\psi.
-```
-
-The yaw kinematics are
-
-```math
-\dot{\psi}
-=
-r.
-```
-
----
-
-The longitudinal body-frame dynamics are
-
-```math
-\dot{v}_x
-=
-\frac{
-F_{x,r}
--
-F_{y,f}\sin\delta
--
-F_{\mathrm{drag}}(v_x)
-}{m}
-+
-r v_y.
-```
-
-The term $F_{x,r}$ is the rear longitudinal force generated by propulsion or braking.
-
-The term $-F_{y,f}\sin\delta$ is the longitudinal projection of the front lateral tire force caused by the steering angle $\delta$.
-
-The term $-F_{\mathrm{drag}}(v_x)$ represents rolling and aerodynamic resistance.
-
-The term $r v_y$ is a body-frame inertial coupling term caused by the rotating vehicle coordinate frame.
-
----
-
-The lateral body-frame dynamics are
-
-```math
-\dot{v}_y
-=
-\frac{
-F_{y,f}\cos\delta
-+
-F_{y,r}
-}{m}
--
-r v_x.
-```
-
-The term $F_{y,f}\cos\delta$ is the lateral projection of the front tire force.
-
-The term $F_{y,r}$ is the rear lateral tire force.
-
-The term $-r v_x$ is the lateral inertial coupling term caused by expressing the translational dynamics in the rotating body-fixed frame.
-
----
-
-The yaw dynamics are obtained from the rotational equation of motion about the vertical axis through the vehicle center of mass:
-
-```math
-I_z \dot{r}
-=
-M_z.
-```
-
-The net yaw moment is
-
-```math
-M_z
-=
-\ell_f F_{y,f}\cos\delta
--
-\ell_r F_{y,r}.
-```
-
-Thus,
-
-```math
-\dot{r}
-=
-\frac{
-\ell_f F_{y,f}\cos\delta
--
-\ell_r F_{y,r}
-}{I_z}.
-```
-
-The front lateral tire force produces the yaw moment contribution $\ell_f F_{y,f}\cos\delta$, while the rear lateral tire force produces the yaw moment contribution $-\ell_r F_{y,r}$.
-
----
-
-The steering angle is treated as a dynamic state. Its evolution is governed by
-
-```math
-\dot{\delta}
-=
-\mathrm{sat}
-\left(
-\dot{\delta}_{cmd}
-\right).
-```
-
-Here, $\dot{\delta}_{cmd}$ is the commanded steering rate, while $\mathrm{sat}(\cdot)$ limits the commanded steering rate according to actuator constraints.
-
-A symmetric steering-rate saturation model can be written as
-
-```math
-\mathrm{sat}
-\left(
-\dot{\delta}_{cmd}
-\right)
-=
-\begin{cases}
-\dot{\delta}_{max},
-&
-\dot{\delta}_{cmd}
->
-\dot{\delta}_{max},
-\\
-
-\dot{\delta}_{cmd},
-&
--\dot{\delta}_{max}
-\leq
-\dot{\delta}_{cmd}
-\leq
-\dot{\delta}_{max},
-\\
-
--\dot{\delta}_{max},
-&
-\dot{\delta}_{cmd}
-<
--\dot{\delta}_{max}.
-\end{cases}
-```
-
----
-
-A simple rolling/aerodynamic resistance term is included only in the longitudinal dynamics. It is used to make the closed-loop equilibrium for the abstract rear-axle longitudinal-force input numerically meaningful in the reduced model.
-
-The resistance force is modeled as
-
-```math
-F_{\mathrm{drag}}(v_x)
-=
-c_2 v_x^2
-+
-c_1 v_x.
-```
-
-The term $c_2 v_x^2$ represents a quadratic aerodynamic-resistance contribution, while $c_1 v_x$ represents a linear rolling or viscous-resistance contribution.
-
----
-
-The front and rear tire slip angles are defined as
-
-```math
-\alpha_f
-=
-\arctan
-\left(
-\frac{
-v_y + \ell_f r
-}{
-\max(v_x,\epsilon)
-}
-\right)
--
-\delta,
-```
-
-```math
-\alpha_r
-=
-\arctan
-\left(
-\frac{
-v_y - \ell_r r
-}{
-\max(v_x,\epsilon)
-}
-\right).
-```
-
-The term $\max(v_x,\epsilon)$ prevents numerical singularities when the longitudinal speed approaches zero.
-
-The front slip angle $\alpha_f$ depends on the lateral velocity at the front axle, $v_y+\ell_f r$, and the steering angle $\delta$.
-
-The rear slip angle $\alpha_r$ depends on the lateral velocity at the rear axle, $v_y-\ell_r r$.
-
----
-
-
-The body sideslip angle is defined as
-
-```math
-\beta
-=
-\arctan
-\left(
-\frac{
-v_y
-}{
-\max(v_x,\epsilon)
-}
-\right).
-```
-
-The sideslip angle $\beta$ measures the angle between the vehicle longitudinal axis and the velocity direction of the vehicle center of mass.
-
-This quantity is especially important for drift-oriented modeling, because large sideslip angles are a defining feature of drifting and aggressive cornering.
-
----
-
-The lateral tire forces use a simplified Pacejka-type form:
-
-```math
-F_{y,i}
-=
-D_i
-\sin
-\left(
-C_i
-\arctan
-\left(
-B_i \alpha_i
-\right)
-\right),
-\qquad
-i \in \{f,r\}.
-```
-
-The parameter $B_i$ controls the stiffness-like behavior near zero slip angle, $C_i$ controls the shape of the tire-force curve, and $D_i$ controls the force amplitude.
-
-The normal-load-scaled amplitudes are
-
-```math
-D_f
-=
-\mu F_{z,f},
-\qquad
-D_r
-=
-\mu F_{z,r}.
-```
-
-Thus, the maximum lateral tire-force capacity is scaled by the tire-road friction coefficient $\mu$ and the corresponding axle normal load.
-
----
-
-The static front and rear axle normal loads are
-
-```math
-F_{z,f}
-=
-\frac{
-m g \ell_r
-}{
-\ell_f + \ell_r
-},
-\qquad
-F_{z,r}
-=
-\frac{
-m g \ell_f
-}{
-\ell_f + \ell_r
-}.
-```
-
-These expressions follow from static load distribution about the vehicle center of mass. A larger rear distance $\ell_r$ increases the static load on the front axle, while a larger front distance $\ell_f$ increases the static load on the rear axle.
-
----
-
-## Model Characteristics
-
-This is a reduced-order drift-oriented dynamic bicycle model. It captures planar rigid-body kinematics, body-frame translational dynamics, yaw rotational dynamics, nonlinear tire-force saturation, steering-rate saturation, and simple longitudinal resistance.
-
-The model is nonlinear because it contains trigonometric terms such as
-
-```math
-\sin\psi,
-\qquad
-\cos\psi,
-\qquad
-\sin\delta,
-\qquad
-\cos\delta,
-```
-
-and nonlinear tire-force relations of the form
-
-```math
-F_{y,i}
-=
-D_i
-\sin
-\left(
-C_i
-\arctan
-\left(
-B_i \alpha_i
-\right)
-\right).
-```
-
-The model deliberately remains reduced-order. It does not explicitly include load transfer, wheel-speed states, suspension dynamics, or detailed actuator dynamics beyond steering-rate saturation.
-
----
-
-## Parameterization
-
-The parameterization used in the reference implementation is listed below. These values are **simulation parameters for the supplied notebook implementation** and are **not experimentally identified vehicle parameters**.
-
-| Parameter | Symbol | Value | Unit |
-|---|---:|---:|---|
-| Mass | $m$ | 1800 | kg |
-| Yaw inertia | $I_z$ | 2800 | kg m² |
-| Front center-of-gravity distance | $\ell_f$ | 1.2 | m |
-| Rear center-of-gravity distance | $\ell_r$ | 1.6 | m |
-| Gravity | $g$ | 9.81 | m/s² |
-| Front Pacejka stiffness parameter | $B_f$ | 10.0 | — |
-| Front Pacejka shape parameter | $C_f$ | 1.3 | — |
-| Rear Pacejka stiffness parameter | $B_r$ | 9.0 | — |
-| Rear Pacejka shape parameter | $C_r$ | 1.25 | — |
-| Steering-angle limit | $\delta_{\max}$ | 0.6 | rad |
-| Steering-rate limit | $\dot{\delta}_{\max}$ | 1.5 | rad/s |
-| Rear longitudinal-force maximum | $F_{x,r}^{\max}$ | 5000 | N |
-| Rear longitudinal-force minimum | $F_{x,r}^{\min}$ | -4000 | N |
-| Nominal tire-road friction coefficient | $\mu_{\mathrm{nom}}$ | 0.95 | — |
-| Sample time | $\Delta t$ | 0.08 | s |
-| Prediction horizon | $N$ | 15 | steps |
-
-
----
-
-##  Optimal Control Problem
-
-At each sampling instant, the optimizer computes a finite sequence of future control inputs:
-
-```math
-U
-=
-\left\{
-u_0,\ldots,u_{N-1}
-\right\},
-\qquad
-u_k \in \mathbb{R}^{2}.
-```
-
-This equation states that the decision variable of the controller is the control sequence $U$ over a prediction horizon of $N$ discrete time steps. Since $u_k \in \mathbb{R}^{2}$, each control input contains two components: the commanded steering rate and the rear longitudinal tire force.
-
-The vehicle dynamics are enforced through the discrete-time nonlinear constraint
-
-```math
-x_{k+1}
-=
-\Phi_{\Delta t}
-\left(
-x_k,
-u_k,
-\mu_k
-\right),
-\qquad
-k = 0,\ldots,N-1.
-```
-
-This equation maps the current state $x_k$ to the next state $x_{k+1}$ using the control input $u_k$ and friction coefficient $\mu_k$. The map $\Phi_{\Delta t}$ represents a fixed-step fourth-order Runge--Kutta discretization of the continuous-time vehicle model over the sample time $\Delta t$.
-
----
-
-For circular-drift scenarios, the stage residual vector is constructed from geometric circle-tracking quantities rather than phase-locked global-position targets.
-
-Let $R$ be the desired drift radius and let the center of the desired circular path be
-
-```math
-(0,R).
-```
-
-This specifies that the reference circle is centered at the global point $(0,R)$, so the desired drift trajectory is a circle of radius $R$ around that point.
-
-The radial distance from the vehicle to the circle center is
-
-```math
-\rho_k
-=
-\sqrt{
-X_k^2
-+
-\left(
-Y_k - R
-\right)^2
-}.
-```
-
-This equation computes the Euclidean distance between the vehicle position $(X_k,Y_k)$ and the circular-path center $(0,R)$. When $\rho_k = R$, the vehicle lies exactly on the desired circle.
-
-The tangent-heading coordinate is
-
-```math
-\theta_k
-=
-\arctan
-\left(
-\frac{
-X_k
-}{
-R - Y_k
-}
-\right).
-```
-
-This equation defines the geometric angle associated with the tangent direction of the desired circular path. It is used to construct a heading reference that is compatible with circular drifting rather than with a fixed global waypoint sequence.
-
----
-
-The radial tracking residual is
-
-```math
-r_k^{(\rho)}
-=
-\sqrt{w_{\rho}}
-\left(
-\rho_k - R
-\right).
-```
-
-This residual penalizes deviation from the desired circular path. If $\rho_k > R$, the vehicle is outside the desired circle; if $\rho_k < R$, it is inside the desired circle. The weight $w_{\rho}$ controls the importance of radial tracking accuracy.
-
-The yaw-heading residual is
-
-```math
-r_k^{(\psi)}
-=
-\sqrt{w_{\psi}}
-\,
-\mathrm{wrap}
-\left(
-\psi_k
--
-\left(
-\theta_k
--
-\beta^{ref}
-\right)
-\right).
-```
-
-This residual penalizes the difference between the actual yaw angle $\psi_k$ and the desired drift heading $\theta_k-\beta^{ref}$. The function $\mathrm{wrap}(\cdot)$ keeps the angular error within a principal interval so that equivalent angles differing by multiples of $2\pi$ are treated consistently.
-
-The longitudinal-velocity residual is
-
-```math
-r_k^{(v_x)}
-=
-\sqrt{w_v}
-\left(
-v_{x,k}
--
-v_x^{ref}
-\right).
-```
-
-This residual penalizes deviation of the body-frame longitudinal speed $v_{x,k}$ from the desired reference speed $v_x^{ref}$. The weight $w_v$ determines how strongly the optimizer enforces forward-speed tracking.
-
-The body-sideslip residual is
-
-```math
-r_k^{(\beta)}
-=
-\sqrt{w_{\beta}}
-\left(
-\beta_k
--
-\beta^{ref}
-\right).
-```
-
-This residual penalizes deviation of the vehicle sideslip angle $\beta_k$ from the desired drift sideslip angle $\beta^{ref}$. It is especially important for drift control because the sideslip angle determines the orientation of the vehicle relative to its velocity direction.
-
-The yaw-rate residual is
-
-```math
-r_k^{(r)}
-=
-\sqrt{w_r}
-\left(
-r_k
--
-r^{ref}
-\right).
-```
-
-This residual penalizes the deviation of the yaw rate $r_k$ from the desired yaw rate $r^{ref}$. It regulates the rotational motion of the vehicle during circular drifting.
-
----
-
-The control-deviation residual is
-
-```math
-r_k^{(u)}
-=
-\begin{bmatrix}
-\sqrt{w_{\dot{\delta}}}
-\left(
-\dot{\delta}_k
--
-\dot{\delta}_k^{ref}
-\right)
-\\
-
-\sqrt{w_F}
-\left(
-F_{x,r,k}
--
-F_{x,r,k}^{ref}
-\right)
-\end{bmatrix}.
-```
-
-This residual penalizes deviation of the applied control inputs from their reference values. The first component penalizes steering-rate deviation, while the second component penalizes rear longitudinal-force deviation.
-
----
-
-The control-increment residual is
-
-```math
-r_k^{(\Delta u)}
-=
-\begin{bmatrix}
-\sqrt{w_{\Delta\dot{\delta}}}
-\left(
-\dot{\delta}_k
--
-\dot{\delta}_{k-1}
-\right)
-\\
-
-\sqrt{w_{\Delta F}}
-\left(
-F_{x,r,k}
--
-F_{x,r,k-1}
-\right)
-\end{bmatrix}.
-```
-
-This residual penalizes rapid changes between consecutive control inputs. It improves smoothness of the optimized control sequence and reduces aggressive steering-rate or force commands.
-
----
-
-Softplus-smoothed box-envelope violations are included for
-
-```math
-\delta,
-\qquad
-|\beta|,
-\qquad
-v_x.
-```
-
-These soft residuals penalize violation of admissible operating bounds on steering angle, sideslip magnitude, and longitudinal speed. The use of smooth softplus penalties keeps the optimization problem differentiable, which is important for gradient-based nonlinear least-squares solvers.
-
----
-
-The nonlinear least-squares optimal control problem is
-
-```math
-\min_{U}
-\;
-\frac{1}{2}
-\sum_{k=0}^{N-1}
-\left\|
-r_k
-\left(
-x_k,
-u_k
-\right)
-\right\|_2^2
-+
-\frac{1}{2}
-\left\|
-r_N
-\left(
-x_N
-\right)
-\right\|_2^2.
-```
-
-This objective minimizes the sum of squared stage residuals over the prediction horizon, together with a terminal residual at the final predicted state. The factor $1/2$ is conventional in least-squares optimization because it simplifies gradient expressions.
-
-The optimization is subject to the nonlinear vehicle dynamics
-
-```math
-x_{k+1}
-=
-\Phi_{\Delta t}
-\left(
-x_k,
-u_k,
-\mu_k
-\right),
-\qquad
-k = 0,\ldots,N-1.
-```
-
-These constraints ensure that every predicted state trajectory is dynamically feasible according to the discretized vehicle model.
-
-The least-squares construction is deliberate because it makes Gauss--Newton approximations natural and computationally efficient for nonlinear model predictive control.
-
-
-
-## VM-GN-RTI Algorithm Diagram
-
-The VM-GN-RTI algorithm uses a batch of candidate control sequences and applies a small number of Gauss--Newton sweeps before selecting the best candidate.
-
-```math
-n_x = 7,
-\qquad
-n_u = 2,
-\qquad
-z^{(i)} \in \mathbb{R}^{N n_u},
-\qquad
-i = 1,\ldots,M.
-```
-
-```mermaid
-flowchart TD
-
-    A([Start at sampling instant t])
-
-    A --> B[Inputs]
-
-    B --> B1["Current state estimate<br/>xₜ ∈ ℝⁿˣ"]
-    B --> B2["Previous condensed control parameterization<br/>z_prev ∈ ℝᴺⁿᵘ"]
-    B --> B3["Nominal control template<br/>U_ref ∈ ℝᴺˣⁿᵘ"]
-    B --> B4["Reference data over horizon<br/>ref"]
-    B --> B5["Number of candidate starts<br/>M"]
-    B --> B6["Gauss--Newton sweeps per sample<br/>K"]
-
-    B1 --> C[Offline preparation]
-    B2 --> C
-    B3 --> C
-    B4 --> C
-    B5 --> C
-    B6 --> C
-
-    C --> C1["Build equilibrium map<br/>and scenario references"]
-    C1 --> C2["JIT-compile rollout, residual,<br/>Jacobian, and batched update kernels"]
-
-    C2 --> D[Online optimization at sample t]
-
-    D --> E[Generate candidate controls]
-
-    E --> E1["Candidate controls<br/>U⁽¹⁾, ..., U⁽ᴹ⁾ ∈ ℝᴺˣⁿᵘ"]
-    E1 --> E2["Use shifted previous solution"]
-    E1 --> E3["Use equilibrium-consistent templates"]
-    E1 --> E4["Use steering pulses,<br/>longitudinal-force pulses,<br/>and small perturbations"]
-
-    E2 --> F[Map controls to unconstrained variables]
-    E3 --> F
-    E4 --> F
-
-    F --> F1["Initial unconstrained candidates<br/>z₀⁽ⁱ⁾ = squash⁻¹(U⁽ⁱ⁾)<br/>z₀⁽ⁱ⁾ ∈ ℝᴺⁿᵘ"]
-
-    F1 --> G{"For j = 0,...,K−1<br/>and for all candidates i in parallel"}
-
-    G --> H[Rollout dynamics]
-
-    H --> H1["Predicted trajectory<br/>x₁:ₙ⁽ⁱ⁾ = scan(ΦΔt, xₜ, U(zⱼ⁽ⁱ⁾))"]
-
-    H1 --> I[Compute residuals]
-
-    I --> I1["Residual vector<br/>rⱼ⁽ⁱ⁾ = r(zⱼ⁽ⁱ⁾)<br/>rⱼ⁽ⁱ⁾ ∈ ℝⁿʳ"]
-
-    I1 --> J[Compute Jacobian]
-
-    J --> J1["Residual Jacobian<br/>Jⱼ⁽ⁱ⁾ = ∂r / ∂z evaluated at zⱼ⁽ⁱ⁾"]
-    J1 --> J2["Jacobian dimension<br/>Jⱼ⁽ⁱ⁾ ∈ ℝⁿʳˣᴺⁿᵘ"]
-
-    J2 --> K1[Build Gauss--Newton system]
-
-    K1 --> K2["Approximate Hessian<br/>Hⱼ⁽ⁱ⁾ = Jⱼ⁽ⁱ⁾ᵀ Jⱼ⁽ⁱ⁾ + λI"]
-    K2 --> K3["Hessian dimension<br/>Hⱼ⁽ⁱ⁾ ∈ ℝᴺⁿᵘˣᴺⁿᵘ"]
-
-    K1 --> K4["Gradient vector<br/>gⱼ⁽ⁱ⁾ = Jⱼ⁽ⁱ⁾ᵀ rⱼ⁽ⁱ⁾"]
-    K4 --> K5["Gradient dimension<br/>gⱼ⁽ⁱ⁾ ∈ ℝᴺⁿᵘ"]
-
-    K3 --> L[Solve linear system]
-    K5 --> L
-
-    L --> L1["Gauss--Newton step<br/>Δzⱼ⁽ⁱ⁾ = − Hⱼ⁽ⁱ⁾⁻¹ gⱼ⁽ⁱ⁾"]
-
-    L1 --> M1[Trust-region scaling]
-
-    M1 --> M2["Scaled update<br/>zⱼ₊₁⁽ⁱ⁾ = zⱼ⁽ⁱ⁾ + αⱼ⁽ⁱ⁾ Δzⱼ⁽ⁱ⁾"]
-
-    M2 --> G
-
-    G --> N[Candidate selection]
-
-    N --> N1["Select best candidate<br/>i* = argminᵢ 1/2 ‖r(zᴷ⁽ⁱ⁾)‖₂²"]
-
-    N1 --> O[Apply first control]
-
-    O --> O1["Applied control<br/>uₜ = U(zᴷ⁽ⁱ*⁾)₀<br/>uₜ ∈ ℝⁿᵘ"]
-
-    O1 --> P[Shift selected horizon]
-
-    P --> P1["Use shifted selected solution<br/>as warm start for next sample"]
-
-    P1 --> Q([End sampling step])
-```
-
-
-
-
-## Condensed Control Parameterization
-
-To keep the implementation notebook compact, the decision variables are limited to controls. Box constraints are enforced by a smooth squashing map
-
-```math
-u_k
-=
-u_{\mathrm{mid}}
-+
-u_{\mathrm{scale}}
-\odot
-\tanh
-\left(
-z_k
-\right),
-```
-
-where $z_k \in \mathbb{R}^{2}$ is unconstrained. Stacking all $z_k$ gives the condensed decision vector
-
-```math
-z
-=
-\begin{bmatrix}
-z_0 \\
-z_1 \\
-\vdots \\
-z_{N-1}
-\end{bmatrix}
-\in
-\mathbb{R}^{2N}.
-```
-
-The midpoint and scaling vectors are
-
-```math
-u_{\mathrm{mid}}
-=
-\frac{
-u_{\max}
-+
-u_{\min}
-}{2},
-\qquad
-u_{\mathrm{scale}}
-=
-\frac{
-u_{\max}
--
-u_{\min}
-}{2}.
-```
-
-Thus, the smooth map sends the unconstrained variable $z_k$ to a bounded physical control input $u_k$. Since
-
-```math
--1
-<
-\tanh(z_k)
-<
-1,
-```
-
-the resulting control satisfies the control box constraints smoothly.
-
-The physical control sequence is recovered from the condensed variable as
-
-```math
-U(z)
-=
-\left\{
-u_0(z_0),
-u_1(z_1),
-\ldots,
-u_{N-1}(z_{N-1})
-\right\}.
-``` 
-
----
-
-## Structured Linear Solve
-
-The full multiple-shooting RTI derivation is still central even though the notebook implementation condenses the optimization problem to controls.
-
-If the optimization variables are the stage states and controls, the full multiple-shooting decision vector is
-
-```math
-w
-=
-\left[
-x_0,
-u_0,
-x_1,
-u_1,
-\ldots,
-x_{N-1},
-u_{N-1},
-x_N
-\right].
-```
-
-This vector contains both the state corrections and the control corrections over the prediction horizon. Unlike the condensed formulation, the state trajectory is treated as an explicit optimization variable.
-
-The linearized dynamics are
-
-```math
-\Delta x_{k+1}
-=
-A_k \Delta x_k
-+
-B_k \Delta u_k
-+
-a_k.
-```
-
-This equation describes the first-order approximation of the discrete-time nonlinear vehicle dynamics around the current nominal trajectory. The vector $a_k$ is the affine defect term that accounts for the mismatch between the nominal rollout and the imposed shooting dynamics.
-
-The state and input Jacobians are
-
-```math
-A_k
-=
-\frac{\partial \Phi}{\partial x}
-\left(
-x_k,
-u_k
-\right),
-\qquad
-B_k
-=
-\frac{\partial \Phi}{\partial u}
-\left(
-x_k,
-u_k
-\right).
-```
-
-Here, $A_k$ measures the sensitivity of the next state with respect to the current state, while $B_k$ measures the sensitivity of the next state with respect to the current control input.
-
-For the seven-state vehicle model with two control inputs,
-
-```math
-A_k
-\in
-\mathbb{R}^{7 \times 7},
-\qquad
-B_k
-\in
-\mathbb{R}^{7 \times 2}.
-```
-
-Thus, each stage couples a seven-dimensional state correction to a two-dimensional control correction.
-
-Under a Gauss--Newton approximation, the RTI quadratic subproblem has the standard sparse KKT structure
-
-```math
-\begin{bmatrix}
-H_0 & G_0^{T} &        &        &        &        \\
-G_0 & 0       & -I     &        &        &        \\
-    & -I      & H_1    & G_1^{T}&        &        \\
-    &         & G_1    & 0      & \ddots &        \\
-    &         &        & \ddots & \ddots & H_N
-\end{bmatrix}
-\begin{bmatrix}
-\Delta x_0 \\
-\Delta u_0 \\
-\Delta x_1 \\
-\Delta u_1 \\
-\vdots
-\end{bmatrix}
-=
--
-\begin{bmatrix}
-g_0 \\
-c_0 \\
-g_1 \\
-c_1 \\
-\vdots
-\end{bmatrix}.
-```
-
-This KKT system represents the first-order optimality conditions of the Gauss Newton quadratic approximation. The matrices $H_k$ come from the local least-squares curvature, the vectors $g_k$ are local gradient terms, and the vectors $c_k$ represent linearized shooting-defect residuals.
-
-The block coupling matrix at each shooting interval is determined by the linearized dynamics:
-
-```math
-G_k
-=
-\begin{bmatrix}
-A_k & B_k
-\end{bmatrix}.
-```
-
-This block maps the state and control correction at stage $k$ to the predicted correction of the next state.
-
-Because only nearest-neighbor shooting defects couple consecutive stages, the KKT matrix is block banded. This structure can be exploited by Riccati recursion or sparse symmetric factorization, giving linear computational scaling in the horizon length for fixed $n_x$ and $n_u$.
-
-This is the structure exploited by high-performance nonlinear model predictive control solvers such as acados and HPIPM. The notebook implementation intentionally keeps a condensed dense Gauss-Newton normal-equation solve because it is easier to reproduce in vanilla JAX on a CPU. Therefore, the condensed solve is a reproducibility convenience, not the final algorithmic end-state. 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 # References 
 
