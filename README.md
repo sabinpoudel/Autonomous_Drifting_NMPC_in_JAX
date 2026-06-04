@@ -625,110 +625,46 @@ Caption: Per-step position tracking error over the 40-step benchmark. JAX method
 
 <img width="1926" height="916" alt="image" src="https://github.com/user-attachments/assets/24bc2fc9-fd33-4184-8e65-e8df7c62c5b2" />
 
-Caption : Radial error relative to the circular reference. JAX methods remain within the corridor, while ACADOS violates the corridor near the end of the run.
+Caption: Radial error relative to the circular reference. JAX methods remain within the corridor, while ACADOS violates the corridor near the end of the run.
+
+<img width="1904" height="954" alt="image" src="https://github.com/user-attachments/assets/f05f0985-c347-4d99-a018-c0f2c48332c5" />
+Caption: Sideslip tracking during circular drifting. All methods remain inside the sideslip envelope; ACADOS has smaller mean sideslip error in this benchmark.
+
+<img width="1904" height="954" alt="image" src="https://github.com/user-attachments/assets/ddb436bb-e9bf-4b32-be28-e7faddab3872" />
+Yaw-rate tracking during circular drifting. JAX methods remain close to the reference yaw rate, while ACADOS shows larger yaw-rate error.
+
+<img width="1904" height="954" alt="image" src="https://github.com/user-attachments/assets/5023fee9-a27d-4161-a4d8-a767cf16d89c" />
+Per-step NMPC solve time. ACADOS is much faster, while JAX methods show higher solve time and first-step timing spikes.
+
+<img width="1893" height="909" alt="image" src="https://github.com/user-attachments/assets/dff16174-4c62-4cc4-be65-fb9404282ffd" />
+Per-step NMPC solve time. ACADOS is  faster, while JAX methods show higher solve time and first-step timing spikes.
+
+<img width="1866" height="1214" alt="image" src="https://github.com/user-attachments/assets/3e513a65-21b0-4067-a8b6-753e9fca5cfb" />
+Time–quality Pareto comparison. JAX methods achieve lower tracking error at higher computational cost, while ACADOS achieves lower solve time with larger tracking error.
+
+<img width="1868" height="1319" alt="image" src="https://github.com/user-attachments/assets/a3f22b27-6d35-4060-978c-761a87240d30" />
+
+The closed-loop sideslip–yaw-rate phase-plane figure shows the evolution of each controller in the (β,r) state space, where β is the vehicle sideslip angle and r is the yaw rate. This phase-plane representation is useful because drifting is not defined only by path position. A vehicle may remain near the geometric path while still having an incorrect drift state, or it may maintain sideslip while rotating too quickly or too slowly. Therefore, plotting sideslip and yaw rate together provides a direct assessment of whether the controller stabilizes the intended drift equilibrium.
+
+In this figure, the vertical reference line corresponds to the desired sideslip reference,
+
+```math
+\beta_{ref} = 0.08 \ \mathrm{rad}
+```
+and the horizontal reference line corresponds to the desired yaw-rate reference,
+
+```math
+r_{ref} = 0.444444 \ \mathrm{rad/s}
+```
+The shaded or bounded region represents the permitted drift-state envelope. This envelope is defined by the sideslip tolerance and yaw-rate tolerance. A trajectory that remains inside this region is considered to maintain an acceptable drift state, whereas a trajectory outside the envelope indicates drift-state deviation.
+
+The JAX-based methods remain close to the desired yaw-rate region and stay within the allowable sideslip--yaw-rate envelope. This means that the JAX controllers  track the circular path and also regulate the internal drift dynamics of the vehicle.
+
+Their trajectories converge toward the neighborhood of the reference drift state rather than moving away from it. In particular, the yaw-rate behavior of the JAX methods is close to the reference value, which is important because yaw rate determines whether the vehicle rotates consistently with the circular path curvature.
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Vehicle Model 
-
-# Seven-State Dynamic Single-Track Vehicle Model
-
-## 1. Complete Symbol Table
-
-| Symbol | Description | Unit |
-|---|---|---|
-| $x$ | State vector | — |
-| $u$ | Control input vector | — |
-| $X$ | Global x-position of the vehicle center of mass | m |
-| $Y$ | Global y-position of the vehicle center of mass | m |
-| $\dot{X}$ | Global x-direction velocity | m/s |
-| $\dot{Y}$ | Global y-direction velocity | m/s |
-| $\psi$ | Yaw angle of the vehicle measured in the inertial frame | rad |
-| $\dot{\psi}$ | Time derivative of yaw angle | rad/s |
-| $v_x$ | Longitudinal velocity in the vehicle body-fixed frame | m/s |
-| $v_y$ | Lateral velocity in the vehicle body-fixed frame | m/s |
-| $\dot{v}_x$ | Longitudinal acceleration in the body-fixed frame | m/s² |
-| $\dot{v}_y$ | Lateral acceleration in the body-fixed frame | m/s² |
-| $r$ | Yaw rate of the vehicle | rad/s |
-| $\dot{r}$ | Yaw acceleration | rad/s² |
-| $\delta$ | Front steering angle | rad |
-| $\dot{\delta}$ | Actual steering rate | rad/s |
-| $\dot{\delta}_{cmd}$ | Commanded steering rate | rad/s |
-| $\dot{\delta}_{max}$ | Maximum allowable steering rate | rad/s |
-| $F_{x,r}$ | Rear longitudinal tire force | N |
-| $F_{y,f}$ | Front lateral tire force | N |
-| $F_{y,r}$ | Rear lateral tire force | N |
-| $F_{\mathrm{drag}}(v_x)$ | Longitudinal rolling/aerodynamic resistance force | N |
-| $m$ | Vehicle mass | kg |
-| $I_z$ | Yaw moment of inertia about the vertical axis | kg m² |
-| $\ell_f$ | Distance from vehicle center of mass to front axle | m |
-| $\ell_r$ | Distance from vehicle center of mass to rear axle | m |
-| $c_1$ | Linear longitudinal resistance coefficient | N s/m |
-| $c_2$ | Quadratic longitudinal resistance coefficient | N s²/m² |
-| $\alpha_f$ | Front tire slip angle | rad |
-| $\alpha_r$ | Rear tire slip angle | rad |
-| $\beta$ | Body sideslip angle | rad |
-| $\epsilon$ | Small positive regularization constant used to avoid division by zero | m/s |
-| $F_{y,i}$ | Lateral tire force at axle $i$ | N |
-| $D_i$ | Tire-force amplitude parameter at axle $i$ | N |
-| $B_i$ | Tire stiffness-shape parameter at axle $i$ | 1/rad |
-| $C_i$ | Tire shape parameter at axle $i$ | — |
-| $i$ | Axle index, where $i \in \{f,r\}$ | — |
-| $D_f$ | Front lateral tire-force amplitude | N |
-| $D_r$ | Rear lateral tire-force amplitude | N |
-| $\mu$ | Tire-road friction coefficient | — |
-| $F_{z,f}$ | Static normal load on the front axle | N |
-| $F_{z,r}$ | Static normal load on the rear axle | N |
-| $g$ | Gravitational acceleration | m/s² |
-| $\mathrm{sat}(\cdot)$ | Steering-rate saturation function | — |
-
+---
+---
 ---
 
 # References 
