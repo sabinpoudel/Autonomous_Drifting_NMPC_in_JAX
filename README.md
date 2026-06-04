@@ -1366,9 +1366,10 @@ Their trajectories converge toward the neighborhood of the reference drift state
 
 The  results demonstrate that the JAX-based solver architecture produces strong closed-loop drift-tracking performance on the circular benchmark:
 
-* Across the nine JAX methods, the **mean position error** is approximately `0.02 m`.
-* **Maximum position error** stays below `~0.062 m`.
-* **Maximum corridor violation** is `0`.
+* Across the nine JAX methods,
+* -the **mean position error** is approximately `0.02 m`.
+* - **Maximum position error** stays below `~0.062 m`.
+* - **Maximum corridor violation** is `0`.
 
 These metrics indicate that JAX solvers maintain the vehicle close to the reference circular path while satisfying the radial corridor constraint.
 
@@ -1419,26 +1420,21 @@ These metrics indicate that JAX solvers maintain the vehicle close to the refere
 
 ### Insights
 
-**Solver Accuracy vs Speed**: High tracking accuracy does not always require maximal Newton iterations. Quick, “good enough” solutions may outperform slower, more accurate solvers in receding-horizon NMPC.
 **JAX Advantages**:
   * Automatic differentiation simplifies implementing new residuals, objectives, and solver variants.
   * Vectorized candidate evaluation improves local initialization and convergence.
   * JIT compilation allows repeated numerical kernels for dynamics, residuals, and updates.
+    
   **Considerations**:
 
   * First-step or compilation overhead can inflate apparent solve time.
   * Timing results should separate compilation, first-call, and steady-state solve times for real-time assessment.
   * Solver choice depends on application priorities:
-
-    * Strict real-time (<1 ms) → ACADOS.
+    *  Strict real-time (<1 ms) → ACADOS.
     * Research, flexibility, and high accuracy → JAX.
 
 This benchmark highlights the trade-offs between speed, accuracy, and flexibility for NMPC solvers in drift-tracking tasks.
 
-
-
----
----
 
 # References 
 
