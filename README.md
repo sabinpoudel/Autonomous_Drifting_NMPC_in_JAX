@@ -1366,8 +1366,8 @@ Their trajectories converge toward the neighborhood of the reference drift state
 
 The  results demonstrate that the JAX-based solver architecture produces strong closed-loop drift-tracking performance on the circular benchmark:
 
-* Across the nine JAX methods,
-* -the **mean position error** is approximately `0.02 m`.
+*  Across the nine JAX methods,
+* - the **mean position error** is approximately `0.02 m`.
 * - **Maximum position error** stays below `~0.062 m`.
 * - **Maximum corridor violation** is `0`.
 
