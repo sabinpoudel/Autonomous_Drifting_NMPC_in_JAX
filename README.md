@@ -127,25 +127,24 @@ The model is discretized using fourth-order Runge--Kutta integration:
 x_{k+1} = f_d(x_k, u_k, \mu_k)
 ```
 
-
 ## Tire Model
 
 The front and rear slip angles are
 
-```math id="phxu0q"
+```math
 \alpha_f =
 \delta -
 \arctan2(v_y + l_f r, v_x)
 ```
 
-```math id="pyls2b"
+```math
 \alpha_r =
 -\arctan2(v_y - l_r r, v_x)
 ```
 
 The lateral tire forces use a simplified Pacejka-type saturation model:
 
-```math id="p6zmdu"
+```math
 F_{y,f}
 =
 D_f
@@ -155,7 +154,7 @@ C_f \arctan(B_f \alpha_f)
 \right)
 ```
 
-```math id="rbyzll"
+```math
 F_{y,r}
 =
 D_r
@@ -167,13 +166,13 @@ C_r \arctan(B_r \alpha_r)
 
 The front tire capacity is
 
-```math id="c3yqot"
+```math
 D_f = \mu F_{z,f}
 ```
 
 The rear lateral capacity is reduced by rear longitudinal force:
 
-```math id="3hhtff"
+```math
 D_r =
 10^{-4}
 \operatorname{softplus}
