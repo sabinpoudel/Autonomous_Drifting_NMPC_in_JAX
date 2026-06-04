@@ -1362,7 +1362,7 @@ Their trajectories converge toward the neighborhood of the reference drift state
 ---
 ## Summary 
 
-## JAX vs ACADOS Benchmark Analysis
+### JAX vs ACADOS Benchmark Analysis
 
 The  results demonstrate that the JAX-based solver architecture produces strong closed-loop drift-tracking performance on the circular benchmark:
 
@@ -1415,16 +1415,16 @@ These metrics indicate that JAX solvers maintain the vehicle close to the refere
   * Mean position error ~0.02 m, zero corridor violation.
   * Success fraction: 1.0.
 
-> **Interpretation**: ACADOS is faster but less accurate for this benchmark, while JAX provides higher closed-loop tracking accuracy and robustness. These results are specific to this notebook setup and do not imply general superiority of one framework.
+ ACADOS is faster but less accurate for this benchmark, while JAX provides higher closed-loop tracking accuracy and robustness. These results are specific to this project setup and do not imply general superiority of one framework.
 
 ### Insights
 
 **Solver Accuracy vs Speed**: High tracking accuracy does not always require maximal Newton iterations. Quick, “good enough” solutions may outperform slower, more accurate solvers in receding-horizon NMPC.
-* **JAX Advantages**:
+**JAX Advantages**:
   * Automatic differentiation simplifies implementing new residuals, objectives, and solver variants.
   * Vectorized candidate evaluation improves local initialization and convergence.
   * JIT compilation allows repeated numerical kernels for dynamics, residuals, and updates.
-* **Considerations**:
+  **Considerations**:
 
   * First-step or compilation overhead can inflate apparent solve time.
   * Timing results should separate compilation, first-call, and steady-state solve times for real-time assessment.
