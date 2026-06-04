@@ -169,13 +169,12 @@ The front tire capacity is
 ```math
 D_f = \mu F_{z,f}
 ```
-
 The rear lateral capacity is reduced by rear longitudinal force:
 
 ```math
 D_r =
 10^{-4}
-\operatorname{softplus}
+\mathrm{softplus}
 \left(
 10^{-4}
 \left[
