@@ -1,7 +1,5 @@
 # Autonomous Drifting Control: JAX-based NMPC 
    ## Preliminary Feasibility study and Demo
-
-
 This project is a preliminary investigation and feasibility study. The goal is to test whether a JAX-native NMPC framework can be used effectively for autonomous drift tracking, and whether this approach is suitable for deeper research and future development.
 
 <img width="1672" height="941" alt="image" src="https://github.com/user-attachments/assets/42b4ccc5-6d13-4260-9851-fbab32ccd9cb" />
