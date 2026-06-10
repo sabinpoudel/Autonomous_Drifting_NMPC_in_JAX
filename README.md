@@ -136,6 +136,9 @@ x_{k+1} = f_d(x_k, u_k, \mu_k)
 
 ## Tire Model
 
+<img width="759" height="728" alt="Screenshot From 2026-06-10 02-05-04" src="https://github.com/user-attachments/assets/5c52e0db-c0dc-45ac-95ac-00bc76d9c007" />
+
+
 The front and rear slip angles are
 
 ```math
