@@ -35,6 +35,9 @@ The project focuses on three goals:
 
 ## Vehicle Model
 
+<img width="946" height="781" alt="Screenshot From 2026-06-10 01-46-16" src="https://github.com/user-attachments/assets/9814c5b4-c5cb-4d7b-8224-441b389240f9" />
+
+
 The vehicle state is
 
 ```math
